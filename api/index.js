@@ -127,9 +127,11 @@ const orderSchema = z.object({
 // 注文作成API
 app.post("/orders", upload.single("license"), async (req, res) => {
   try {
+    console.log('Order creation started', { body: req.body, file: req.file });
     await initDB();
     
     if (!req.file) {
+      console.log('No file uploaded');
       return res.status(400).json({ error: "医師免許証ファイルが必要です" });
     }
 
@@ -167,10 +169,11 @@ app.post("/orders", upload.single("license"), async (req, res) => {
       ...p
     }).catch(console.error);
 
+    console.log('Order created successfully', { orderId: stmt.lastID });
     return res.json({ ok: true, orderId: stmt.lastID });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "サーバ内部エラー" });
+    console.error('Order creation error:', err);
+    return res.status(500).json({ error: err.message || "サーバ内部エラー" });
   }
 });
 
@@ -197,6 +200,18 @@ app.get("/orders/:id", async (req, res) => {
     console.error(err);
     res.status(500).json({ error: "サーバ内部エラー" });
   }
+});
+
+// エラーハンドリングミドルウェア
+app.use((err, req, res, next) => {
+  console.error('Global error handler:', err);
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'ファイルサイズが大きすぎます（5MB以下にしてください）' });
+    }
+    return res.status(400).json({ error: 'ファイルアップロードエラー: ' + err.message });
+  }
+  res.status(500).json({ error: err.message || 'サーバー内部エラー' });
 });
 
 // Vercel用のエクスポート
