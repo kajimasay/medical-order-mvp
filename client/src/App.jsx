@@ -45,10 +45,10 @@ export default function App() {
       try { setForm((f) => ({ ...f, ...JSON.parse(raw) })); } catch {}
     }
 
-    // Admin shortcut: Cmd+Shift+Alt+M (Mac) or Ctrl+Shift+Alt+M (Windows/Linux)
+    // Admin shortcut: Cmd+Shift+M (Mac) or Ctrl+Shift+Alt+M (Windows/Linux)
     const handleKeyDown = (e) => {
       const isModifierPressed = navigator.platform.includes('Mac') 
-        ? (e.metaKey && e.shiftKey && e.altKey && e.key === 'M')
+        ? (e.metaKey && e.shiftKey && e.key === 'M')
         : (e.ctrlKey && e.shiftKey && e.altKey && e.key === 'M');
         
       if (isModifierPressed) {
@@ -483,7 +483,7 @@ export default function App() {
               </button>
             </form>
             <div className="admin-login-footer">
-              <small>🔑 ショートカット: {navigator.platform.includes('Mac') ? '⌘+Shift+Alt+M' : 'Ctrl+Shift+Alt+M'}</small>
+              <small>🔑 ショートカット: {navigator.platform.includes('Mac') ? '⌘+Shift+M' : 'Ctrl+Shift+Alt+M'}</small>
             </div>
           </div>
         </div>
@@ -567,7 +567,7 @@ export default function App() {
               )}
             </div>
             <div className="admin-modal-footer">
-              <small>🔐 セキュアアクセス | ショートカット: {navigator.platform.includes('Mac') ? '⌘+Shift+Alt+M' : 'Ctrl+Shift+Alt+M'}</small>
+              <small>🔐 セキュアアクセス | ショートカット: {navigator.platform.includes('Mac') ? '⌘+Shift+M' : 'Ctrl+Shift+Alt+M'}</small>
             </div>
           </div>
         </div>
