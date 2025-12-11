@@ -1,54 +1,37 @@
 // api/index.js - Vercel Serverless Functions用API
 console.log("API module loading...");
 
-// Vercel Serverless Functions用のエクスポート
-export default function handler(req, res) {
-  // VercelのサーバーレスランタイムではExpressを直接使えないため
-  // 手動でルーティングを処理
-  console.log(`${req.method} ${req.url} called`);
+// Vercel Serverless Functions用のエクスポート - 修正版
+export default async function handler(req, res) {
+  console.log(`API Called: ${req.method} ${req.url}`);
+  
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return res.status(200).end();
   }
 
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Content-Type', 'application/json');
-
   try {
-    // ルートマッチング
-    if (req.url === '/api' || req.url === '/api/') {
-      return res.json({
-        message: "Medical Order API",
-        endpoints: {
-          "GET /api/test": "API status test",
-          "POST /api/orders": "Create new order",
-          "GET /api/orders": "List all orders"
-        }
-      });
-    }
+    const { pathname } = new URL(req.url, `http://${req.headers.host}`);
+    console.log(`Parsed pathname: ${pathname}`);
 
-    if (req.url === '/api/test') {
+    // ルートマッチング - /api プレフィックスを考慮
+    if (pathname === '/api/test' || pathname === '/test') {
       if (req.method === 'GET') {
-        return res.json({ 
+        return res.status(200).json({ 
           status: "ok", 
-          message: "API is working", 
+          message: "API is working from Vercel!", 
           timestamp: new Date().toISOString(),
-          environment: "vercel"
-        });
-      }
-      if (req.method === 'POST') {
-        return res.json({ 
-          status: "ok", 
-          message: "POST is working", 
-          received: req.body 
+          environment: "vercel",
+          pathname: pathname
         });
       }
     }
 
-    if (req.url === '/api/orders') {
+    if (pathname === '/api/orders' || pathname === '/orders') {
       if (req.method === 'GET') {
         const dummyOrders = [{
           id: 1,
@@ -58,35 +41,49 @@ export default function handler(req, res) {
           contact_email: "test@example.com",
           created_at: new Date().toISOString()
         }];
-        return res.json(dummyOrders);
+        return res.status(200).json(dummyOrders);
       }
 
       if (req.method === 'POST') {
-        // Vercelでは multipart/form-data の処理が複雑なので
-        // 一旦JSONでのテストレスポンスを返す
-        console.log("Order creation request received");
-        
+        console.log("Order POST request received");
         const orderId = Math.floor(Math.random() * 10000);
-        return res.json({ 
+        return res.status(200).json({ 
           ok: true, 
           orderId: orderId,
-          message: "注文を受け付けました（テスト）" 
+          message: "注文を受け付けました（Vercel）",
+          pathname: pathname
         });
       }
     }
 
-    // 404ハンドラー
-    console.log(`404 - Route not found: ${req.method} ${req.url}`);
+    // デフォルトルート
+    if (pathname === '/api' || pathname === '/') {
+      return res.status(200).json({
+        message: "Medical Order API - Vercel Functions",
+        endpoints: {
+          "GET /api/test": "API status test",
+          "POST /api/orders": "Create new order",
+          "GET /api/orders": "List all orders"
+        },
+        pathname: pathname
+      });
+    }
+
+    // 404
+    console.log(`404 - Route not found: ${req.method} ${pathname}`);
     return res.status(404).json({ 
-      error: `Route not found: ${req.method} ${req.url}`,
-      availableRoutes: ['/api/test', '/api/orders']
+      error: `Route not found: ${req.method} ${pathname}`,
+      availableRoutes: ['/api/test', '/api/orders'],
+      receivedUrl: req.url,
+      receivedPathname: pathname
     });
 
   } catch (error) {
     console.error('Handler error:', error);
     return res.status(500).json({ 
       error: 'サーバー内部エラー',
-      details: error.message 
+      details: error.message,
+      url: req.url 
     });
   }
 }
