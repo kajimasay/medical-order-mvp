@@ -30,6 +30,10 @@ export default function App() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
+  const [adminError, setAdminError] = useState("");
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [orderResult, setOrderResult] = useState(null);
@@ -41,11 +45,15 @@ export default function App() {
       try { setForm((f) => ({ ...f, ...JSON.parse(raw) })); } catch {}
     }
 
-    // Admin shortcut: Ctrl+Shift+A
+    // Admin shortcut: Ctrl+Shift+Alt+M (more complex)
     const handleKeyDown = (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+      if (e.ctrlKey && e.shiftKey && e.altKey && e.key === 'M') {
         e.preventDefault();
-        toggleAdminModal();
+        if (!adminAuthenticated) {
+          setShowAdminLogin(true);
+        } else {
+          toggleAdminModal();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -77,8 +85,52 @@ export default function App() {
     return null;
   };
 
+  // Admin authentication functions
+  const handleAdminLogin = (e) => {
+    e.preventDefault();
+    // セキュアなパスワード（実際の運用では環境変数から取得推奨）
+    const correctPassword = "CVG2024Admin#";
+    
+    if (adminPassword === correctPassword) {
+      setAdminAuthenticated(true);
+      setShowAdminLogin(false);
+      setAdminError("");
+      setAdminPassword("");
+      
+      // セッション管理: 30分後に自動ログアウト
+      setTimeout(() => {
+        if (adminAuthenticated) {
+          handleAdminLogout();
+          alert("セキュリティのため30分後に自動ログアウトしました");
+        }
+      }, 30 * 60 * 1000); // 30分
+      
+      toggleAdminModal();
+    } else {
+      setAdminError("パスワードが正しくありません");
+      setAdminPassword("");
+      
+      // 失敗時の遅延（ブルートフォース対策）
+      setTimeout(() => {
+        setAdminError("");
+      }, 3000);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setAdminAuthenticated(false);
+    setShowAdminModal(false);
+    setAdminPassword("");
+    setAdminError("");
+  };
+
   // Admin modal functions
   const toggleAdminModal = async () => {
+    if (!adminAuthenticated) {
+      setShowAdminLogin(true);
+      return;
+    }
+    
     if (!showAdminModal) {
       await fetchOrders();
     }
@@ -389,18 +441,71 @@ export default function App() {
         </div>
       )}
 
-      {/* Admin Modal */}
-      {showAdminModal && (
+      {/* Admin Login Modal */}
+      {showAdminLogin && (
         <div className="modal-overlay">
-          <div className="admin-modal">
-            <div className="admin-modal-header">
-              <h2>注文管理</h2>
+          <div className="admin-login-modal">
+            <div className="admin-login-header">
+              <h2>🔒 管理者ログイン</h2>
               <button 
                 className="close-btn"
-                onClick={() => setShowAdminModal(false)}
+                onClick={() => {
+                  setShowAdminLogin(false);
+                  setAdminPassword("");
+                  setAdminError("");
+                }}
               >
                 ×
               </button>
+            </div>
+            <form onSubmit={handleAdminLogin} className="admin-login-form">
+              <div className="password-field">
+                <label htmlFor="adminPassword">パスワード</label>
+                <input
+                  type="password"
+                  id="adminPassword"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  placeholder="管理者パスワードを入力"
+                  autoFocus
+                  required
+                />
+              </div>
+              {adminError && (
+                <div className="admin-error">{adminError}</div>
+              )}
+              <button type="submit" className="admin-login-btn">
+                ログイン
+              </button>
+            </form>
+            <div className="admin-login-footer">
+              <small>🔑 ショートカット: Ctrl+Shift+Alt+M</small>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Modal */}
+      {showAdminModal && adminAuthenticated && (
+        <div className="modal-overlay">
+          <div className="admin-modal">
+            <div className="admin-modal-header">
+              <h2>📋 注文管理 - CVG内部用</h2>
+              <div className="admin-header-actions">
+                <button 
+                  className="logout-btn"
+                  onClick={handleAdminLogout}
+                  title="ログアウト"
+                >
+                  🚪 ログアウト
+                </button>
+                <button 
+                  className="close-btn"
+                  onClick={() => setShowAdminModal(false)}
+                >
+                  ×
+                </button>
+              </div>
             </div>
             <div className="admin-modal-content">
               {loadingOrders ? (
@@ -458,7 +563,7 @@ export default function App() {
               )}
             </div>
             <div className="admin-modal-footer">
-              <small>ショートカット: Ctrl+Shift+A</small>
+              <small>🔐 セキュアアクセス | ショートカット: Ctrl+Shift+Alt+M</small>
             </div>
           </div>
         </div>
