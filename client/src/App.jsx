@@ -47,12 +47,45 @@ export default function App() {
 
     // Admin shortcut: Cmd+Shift+K (Mac) or Ctrl+Shift+Alt+M (Windows/Linux)
     const handleKeyDown = (e) => {
-      const isModifierPressed = navigator.platform.includes('Mac') 
-        ? (e.metaKey && e.shiftKey && e.key === 'K')
-        : (e.ctrlKey && e.shiftKey && e.altKey && e.key === 'M');
+      // デバッグ用ログ（本番環境では削除推奨）
+      if (e.key === 'K' && (e.metaKey || e.ctrlKey)) {
+        console.log('Key detected:', {
+          key: e.key,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          shiftKey: e.shiftKey,
+          altKey: e.altKey,
+          platform: navigator.platform
+        });
+      }
+      
+      const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac') || window.navigator.platform.startsWith('Mac');
+      
+      // Macの場合は複数の方法で検出を試行
+      let isModifierPressed = false;
+      if (isMac) {
+        // 方法1: 標準的な検出
+        isModifierPressed = (e.metaKey && e.shiftKey && e.key === 'K');
+        
+        // 方法2: keyCodeでの検出（古いブラウザ対応）
+        if (!isModifierPressed && e.keyCode === 75) { // K key
+          isModifierPressed = e.metaKey && e.shiftKey;
+        }
+        
+        // 方法3: codeプロパティでの検出
+        if (!isModifierPressed && e.code === 'KeyK') {
+          isModifierPressed = e.metaKey && e.shiftKey;
+        }
+      } else {
+        // Windows/Linux
+        isModifierPressed = (e.ctrlKey && e.shiftKey && e.altKey && e.key === 'M');
+      }
         
       if (isModifierPressed) {
+        console.log('Admin shortcut activated!');
         e.preventDefault();
+        e.stopPropagation();
+        
         if (!adminAuthenticated) {
           setShowAdminLogin(true);
         } else {
@@ -60,8 +93,19 @@ export default function App() {
         }
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    // キーイベントをdocumentとwindowの両方に登録して確実に捕捉
+    const addKeyListeners = () => {
+      document.addEventListener('keydown', handleKeyDown, true);
+      window.addEventListener('keydown', handleKeyDown, true);
+    };
+    
+    const removeKeyListeners = () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+    
+    addKeyListeners();
+    return removeKeyListeners;
   }, []);
 
   // 入力のたびに保存（ファイル以外）
