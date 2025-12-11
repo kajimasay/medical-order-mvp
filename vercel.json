@@ -11,5 +11,8 @@
       "source": "/api/(.*)",
       "destination": "/api/index.js"
     }
-  ]
+  ],
+  "github": {
+    "autoAlias": false
+  }
 }
