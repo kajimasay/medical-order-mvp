@@ -29,6 +29,9 @@ export default function App() {
   const [message, setMessage] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [orders, setOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
   const [orderResult, setOrderResult] = useState(null);
 
   // 初回読み込み: 顧客情報を localStorage から復元
@@ -37,6 +40,16 @@ export default function App() {
     if (raw) {
       try { setForm((f) => ({ ...f, ...JSON.parse(raw) })); } catch {}
     }
+
+    // Admin shortcut: Ctrl+Shift+A
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+        e.preventDefault();
+        toggleAdminModal();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // 入力のたびに保存（ファイル以外）
@@ -62,6 +75,51 @@ export default function App() {
     const q = Number(form.quantity);
     if (!Number.isInteger(q) || q < 1 || q > 999) return "個数は1〜999";
     return null;
+  };
+
+  // Admin modal functions
+  const toggleAdminModal = async () => {
+    if (!showAdminModal) {
+      await fetchOrders();
+    }
+    setShowAdminModal(!showAdminModal);
+  };
+
+  const fetchOrders = async () => {
+    setLoadingOrders(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/orders`);
+      if (res.ok) {
+        const ordersList = await res.json();
+        setOrders(ordersList);
+      } else {
+        console.error('Failed to fetch orders:', res.status);
+        setOrders([]);
+      }
+    } catch (err) {
+      console.error('Error fetching orders:', err);
+      setOrders([]);
+    }
+    setLoadingOrders(false);
+  };
+
+  const updateOrderStatus = async (orderId, newStatus) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/orders`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: orderId, status: newStatus })
+      });
+      if (res.ok) {
+        const result = await res.json();
+        console.log('Status update result:', result);
+        await fetchOrders(); // Refresh orders
+      } else {
+        console.error('Failed to update order status:', res.status);
+      }
+    } catch (err) {
+      console.error('Error updating order status:', err);
+    }
   };
 
   const onSubmit = async (e) => {
@@ -326,6 +384,81 @@ export default function App() {
               >
                 閉じる
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Modal */}
+      {showAdminModal && (
+        <div className="modal-overlay">
+          <div className="admin-modal">
+            <div className="admin-modal-header">
+              <h2>注文管理</h2>
+              <button 
+                className="close-btn"
+                onClick={() => setShowAdminModal(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="admin-modal-content">
+              {loadingOrders ? (
+                <div className="loading">読み込み中...</div>
+              ) : (
+                <div className="orders-list">
+                  <div className="orders-header">
+                    <h3>全注文一覧 ({orders.length}件)</h3>
+                    <button 
+                      className="refresh-btn"
+                      onClick={fetchOrders}
+                    >
+                      更新
+                    </button>
+                  </div>
+                  {orders.length === 0 ? (
+                    <p>注文データがありません</p>
+                  ) : (
+                    <div className="orders-table">
+                      <div className="table-header">
+                        <span>ID</span>
+                        <span>商品</span>
+                        <span>数量</span>
+                        <span>氏名</span>
+                        <span>Email</span>
+                        <span>作成日時</span>
+                        <span>ステータス</span>
+                      </div>
+                      {orders.map((order) => (
+                        <div key={order.id} className="table-row">
+                          <span>{order.id}</span>
+                          <span>{PRODUCTS.find(p => p.id === order.product)?.name || order.product}</span>
+                          <span>{order.quantity}</span>
+                          <span>{order.full_name}</span>
+                          <span>{order.contact_email}</span>
+                          <span>{order.created_at ? new Date(order.created_at).toLocaleString('ja-JP') : 'N/A'}</span>
+                          <span>
+                            <select 
+                              value={order.status || 'pending'}
+                              onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+                              className="status-select"
+                            >
+                              <option value="pending">保留中</option>
+                              <option value="processing">処理中</option>
+                              <option value="shipped">発送済み</option>
+                              <option value="delivered">配達完了</option>
+                              <option value="cancelled">キャンセル</option>
+                            </select>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="admin-modal-footer">
+              <small>ショートカット: Ctrl+Shift+A</small>
             </div>
           </div>
         </div>
