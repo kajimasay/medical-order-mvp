@@ -9,7 +9,7 @@
       }
     },
     {
-      "src": "api/*.js",
+      "src": "api/index.js",
       "use": "@vercel/node"
     }
   ],
@@ -23,8 +23,20 @@
       "dest": "/client/dist/admin.html"
     },
     {
-      "src": "/(.*)",
+      "src": "/assets/(.*)",
+      "dest": "/client/dist/assets/$1"
+    },
+    {
+      "src": "/(vite\\.svg|favicon\\.ico)",
       "dest": "/client/dist/$1"
+    },
+    {
+      "src": "/",
+      "dest": "/client/dist/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/client/dist/index.html"
     }
   ]
 }
