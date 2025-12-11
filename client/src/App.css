@@ -83,11 +83,57 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .justify-center { justify-content: center; }
 .max-w-md { max-width: 28rem; }
 .max-w-lg { max-width: 32rem; }
+.max-w-2xl { max-width: 42rem; }
 .overflow-y-auto { overflow-y: auto; }
+
+/* モーダル詳細スタイル */
+.rounded-lg { border-radius: 0.5rem; }
+.max-h-90vh { max-height: 90vh; }
+.border-b { border-bottom: 1px solid #e5e7eb; }
+.border-t { border-top: 1px solid #e5e7eb; }
+.text-xl { font-size: 1.25rem; }
+.font-semibold { font-weight: 600; }
+.text-gray-800 { color: #1f2937; }
+.text-gray-700 { color: #374151; }
+.space-y-4 > * + * { margin-top: 1rem; }
+.space-y-1 > * + * { margin-top: 0.25rem; }
+.bg-gray-50 { background-color: #f9fafb; }
+.p-4 { padding: 1rem; }
+.p-6 { padding: 1.5rem; }
+.p-8 { padding: 2rem; }
+.font-medium { font-weight: 500; }
+.justify-end { justify-content: flex-end; }
+.gap-3 { gap: 0.75rem; }
+.gap-4 { gap: 1rem; }
+.text-center { text-align: center; }
+
+/* ボタンスタイル追加 */
+.border-gray-300 { border-color: #d1d5db; }
+.text-gray-700 { color: #374151; }
+.px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+
+/* ボタンhover効果（追加） */
+button:hover { transition: background-color 0.2s ease; }
+.bg-gray-50:hover { background-color: #f3f4f6; }
+.bg-blue-600:hover { background-color: #1d4ed8; }
+
+/* 成功モーダル用 */
+.w-16 { width: 4rem; }
+.h-16 { height: 4rem; }
+.w-8 { width: 2rem; }
+.h-8 { height: 2rem; }
+.bg-green-100 { background-color: #dcfce7; }
+.text-green-500 { color: #22c55e; }
+.rounded-full { border-radius: 9999px; }
+.mx-auto { margin-left: auto; margin-right: auto; }
 
 /* レスポンシブ対応 */
 @media (min-width: 640px) {
   .sm-grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 768px) {
+  .md-grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* フォーカススタイル */

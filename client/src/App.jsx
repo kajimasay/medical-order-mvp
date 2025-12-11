@@ -233,13 +233,13 @@ export default function App() {
       {/* 確認モーダル */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-90vh overflow-y-auto">
             <div className="p-6 border-b">
               <h3 className="text-xl font-semibold text-gray-800">注文内容確認</h3>
               <p className="text-sm text-gray-600 mt-1">以下の内容で注文を送信しますか？</p>
             </div>
             <div className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md-grid-cols-2 gap-4">
                 <div className="bg-gray-50 p-4 rounded">
                   <h4 className="font-semibold text-gray-700 mb-2">商品情報</h4>
                   <div className="space-y-1 text-sm">
