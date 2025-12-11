@@ -72,6 +72,13 @@ const PUBLIC_DIR = path.join(process.cwd(), "public");
 if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 app.use(express.static(PUBLIC_DIR));
 
+// 本番環境では React アプリの静的ファイルを配信
+const NODE_ENV = process.env.NODE_ENV || 'development';
+if (NODE_ENV === 'production') {
+  const CLIENT_BUILD_DIR = path.join(process.cwd(), "client", "dist");
+  app.use(express.static(CLIENT_BUILD_DIR));
+}
+
 // DB 準備
 let db;
 (async () => {
@@ -191,8 +198,23 @@ app.get("/api/orders/:id", async (req, res) => {
   res.json(row);
 });
 
+// 本番環境でのSPAルーティング（全てのルートをindex.htmlに）
+if (NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    // APIルートは除外
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/uploads') && req.path !== '/admin.html') {
+      const CLIENT_BUILD_DIR = path.join(process.cwd(), "client", "dist");
+      res.sendFile(path.join(CLIENT_BUILD_DIR, 'index.html'));
+    }
+  });
+}
+
 const server = app.listen(PORT, () => {
-  console.log(`API listening on http://localhost:${PORT}`);
+  console.log(`🚀 API listening on http://localhost:${PORT}`);
+  console.log(`📋 Admin panel: http://localhost:${PORT}/admin.html`);
+  if (NODE_ENV === 'production') {
+    console.log('🌐 Running in production mode');
+  }
 });
 
 // 適切な終了処理
