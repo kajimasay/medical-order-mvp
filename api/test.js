@@ -1,20 +1,22 @@
-// api/test.js - シンプルなテスト用API
-import express from "express";
-import cors from "cors";
+// Test endpoint
+export default async function handler(req, res) {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
-const app = express();
+  if (req.method === 'GET') {
+    return res.status(200).json({ 
+      status: "ok", 
+      message: "API is working from Vercel Pages!", 
+      timestamp: new Date().toISOString(),
+      environment: "vercel-pages"
+    });
+  }
 
-app.use(cors({ origin: true }));
-app.use(express.json());
-
-app.get("/test", (req, res) => {
-  console.log("Test endpoint called");
-  res.json({ status: "ok", message: "API is working" });
-});
-
-app.post("/test", (req, res) => {
-  console.log("Test POST endpoint called", { body: req.body });
-  res.json({ status: "ok", received: req.body });
-});
-
-export default app;
+  return res.status(405).json({ error: 'Method not allowed' });
+}
