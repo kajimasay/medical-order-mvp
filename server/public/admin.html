@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注文管理システム - Cell Vision Global</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .order-card {
+            transition: all 0.3s ease;
+        }
+        .order-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- ヘッダー -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">注文管理システム</h1>
+            <p class="text-gray-600">Cell Vision Global Limited - 医療用発注管理</p>
+            <div class="mt-4 flex gap-4">
+                <button onclick="loadOrders()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+                    🔄 更新
+                </button>
+                <span id="orderCount" class="bg-green-100 text-green-800 px-3 py-2 rounded"></span>
+                <span id="lastUpdate" class="text-gray-500 text-sm"></span>
+            </div>
+        </div>
+
+        <!-- 統計情報 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">総注文数</h3>
+                <div id="totalOrders" class="text-3xl font-bold text-blue-600">-</div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">今日の注文</h3>
+                <div id="todayOrders" class="text-3xl font-bold text-green-600">-</div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">人気商品</h3>
+                <div id="popularProduct" class="text-lg font-medium text-purple-600">-</div>
+            </div>
+        </div>
+
+        <!-- 注文一覧 -->
+        <div class="bg-white rounded-lg shadow-md">
+            <div class="p-6 border-b">
+                <h2 class="text-xl font-semibold text-gray-800">注文一覧</h2>
+            </div>
+            <div id="ordersContainer" class="p-6">
+                <div class="text-center py-8">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                    <p class="mt-4 text-gray-600">注文データを読み込み中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 注文詳細モーダル -->
+    <div id="orderModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="p-6 border-b">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xl font-semibold">注文詳細</h3>
+                    <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700">
+                        ✕
+                    </button>
+                </div>
+            </div>
+            <div id="orderDetails" class="p-6">
+                <!-- 詳細内容がここに表示される -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ordersData = [];
+
+        // 注文データを読み込み
+        async function loadOrders() {
+            try {
+                const response = await fetch('/api/orders');
+                ordersData = await response.json();
+                displayOrders();
+                updateStats();
+                document.getElementById('lastUpdate').textContent = `最終更新: ${new Date().toLocaleString('ja-JP')}`;
+            } catch (error) {
+                console.error('注文データの読み込みに失敗:', error);
+                document.getElementById('ordersContainer').innerHTML = 
+                    '<div class="text-center py-8 text-red-600">データの読み込みに失敗しました</div>';
+            }
+        }
+
+        // 注文一覧を表示
+        function displayOrders() {
+            const container = document.getElementById('ordersContainer');
+            
+            if (ordersData.length === 0) {
+                container.innerHTML = '<div class="text-center py-8 text-gray-500">注文データがありません</div>';
+                return;
+            }
+
+            const ordersHtml = ordersData.map(order => `
+                <div class="order-card bg-gray-50 rounded-lg p-4 mb-4 cursor-pointer border border-gray-200" 
+                     onclick="showOrderDetails(${order.id})">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-medium">
+                                    ID: ${order.id}
+                                </span>
+                                <span class="text-lg font-semibold text-gray-800">${order.full_name}</span>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm text-gray-600">
+                                <div>📦 ${getProductName(order.product)} × ${order.quantity}</div>
+                                <div>🏢 ${order.company_name || '個人'}</div>
+                                <div>📞 ${order.contact_name}</div>
+                                <div>📅 ${new Date(order.created_at).toLocaleString('ja-JP')}</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
+                                受付済み
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            container.innerHTML = ordersHtml;
+        }
+
+        // 商品名を取得
+        function getProductName(productId) {
+            const products = {
+                'eye-booster': 'SBC Eye Booster (試薬)',
+                'exosome-kit': 'Exosome Assay Kit',
+                'cm-vial': 'hSC-CM Vial'
+            };
+            return products[productId] || productId;
+        }
+
+        // 統計情報を更新
+        function updateStats() {
+            const total = ordersData.length;
+            const today = new Date().toDateString();
+            const todayCount = ordersData.filter(order => 
+                new Date(order.created_at).toDateString() === today
+            ).length;
+
+            // 人気商品を計算
+            const productCount = {};
+            ordersData.forEach(order => {
+                productCount[order.product] = (productCount[order.product] || 0) + order.quantity;
+            });
+            const popularProduct = Object.keys(productCount).reduce((a, b) => 
+                productCount[a] > productCount[b] ? a : b, 'なし'
+            );
+
+            document.getElementById('totalOrders').textContent = total;
+            document.getElementById('todayOrders').textContent = todayCount;
+            document.getElementById('popularProduct').textContent = getProductName(popularProduct);
+            document.getElementById('orderCount').textContent = `${total}件の注文`;
+        }
+
+        // 注文詳細を表示
+        function showOrderDetails(orderId) {
+            const order = ordersData.find(o => o.id === orderId);
+            if (!order) return;
+
+            const details = `
+                <div class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-gray-50 p-4 rounded">
+                            <h4 class="font-semibold text-gray-700 mb-2">基本情報</h4>
+                            <div class="space-y-1 text-sm">
+                                <div><span class="font-medium">注文ID:</span> ${order.id}</div>
+                                <div><span class="font-medium">氏名:</span> ${order.full_name}</div>
+                                <div><span class="font-medium">商品:</span> ${getProductName(order.product)}</div>
+                                <div><span class="font-medium">数量:</span> ${order.quantity}</div>
+                                <div><span class="font-medium">注文日時:</span> ${new Date(order.created_at).toLocaleString('ja-JP')}</div>
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded">
+                            <h4 class="font-semibold text-gray-700 mb-2">会社情報</h4>
+                            <div class="space-y-1 text-sm">
+                                <div><span class="font-medium">会社名:</span> ${order.company_name || 'なし'}</div>
+                                <div><span class="font-medium">会社電話:</span> ${order.company_phone || 'なし'}</div>
+                                <div><span class="font-medium">会社住所:</span> ${order.company_address || 'なし'}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded">
+                        <h4 class="font-semibold text-gray-700 mb-2">個人情報</h4>
+                        <div class="space-y-1 text-sm">
+                            <div><span class="font-medium">自宅住所:</span> ${order.home_address || 'なし'}</div>
+                            <div><span class="font-medium">自宅電話:</span> ${order.home_phone || 'なし'}</div>
+                        </div>
+                    </div>
+                    ${order.license_path ? `
+                        <div class="bg-gray-50 p-4 rounded">
+                            <h4 class="font-semibold text-gray-700 mb-2">添付ファイル</h4>
+                            <a href="${order.license_path}" target="_blank" 
+                               class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition inline-block">
+                                📄 医師免許状を表示
+                            </a>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            document.getElementById('orderDetails').innerHTML = details;
+            document.getElementById('orderModal').classList.remove('hidden');
+            document.getElementById('orderModal').classList.add('flex');
+        }
+
+        // モーダルを閉じる
+        function closeModal() {
+            document.getElementById('orderModal').classList.add('hidden');
+            document.getElementById('orderModal').classList.remove('flex');
+        }
+
+        // ページ読み込み時に注文データを取得
+        document.addEventListener('DOMContentLoaded', loadOrders);
+
+        // モーダル外クリックで閉じる
+        document.getElementById('orderModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>

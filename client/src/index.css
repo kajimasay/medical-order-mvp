@@ -1,0 +1,19 @@
+/* index.css */
+
+body {
+font-family: 'Inter', 'Noto Sans JP', sans-serif;
+background-color: #f9fafb; /* gray-50 */
+color: #111827; /* gray-900 */
+margin: 0;
+padding: 0;
+}
+
+
+/* スクロールバー軽微調整（オプション） */
+::-webkit-scrollbar {
+width: 8px;
+}
+::-webkit-scrollbar-thumb {
+background-color: rgba(0, 0, 0, 0.2);
+border-radius: 4px;
+}
