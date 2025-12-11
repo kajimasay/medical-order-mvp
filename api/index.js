@@ -115,4 +115,7 @@ app.use((err, req, res, next) => {
 
 console.log("API setup complete");
 
-export default app;
+// Vercel Serverless Functions用のエクスポート
+export default (req, res) => {
+  return app(req, res);
+};
