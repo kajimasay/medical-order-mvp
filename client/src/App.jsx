@@ -70,6 +70,29 @@ export default function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(persist));
   }, [form.full_name, form.company_name, form.company_phone, form.company_address, form.home_address, form.home_phone, form.contact_name, form.contact_phone, form.contact_email, form.product, form.quantity]);
 
+  // エラーメッセージが表示された時に自動的にトップにスクロール
+  useEffect(() => {
+    if (message && message.type === "error") {
+      // フォームのトップまたはエラーメッセージまでスムーズにスクロール
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+      
+      // さらに正確にエラーメッセージの位置にスクロールしたい場合
+      const errorElement = document.querySelector('.alert');
+      if (errorElement) {
+        setTimeout(() => {
+          errorElement.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start',
+            inline: 'nearest'
+          });
+        }, 100);
+      }
+    }
+  }, [message]);
+
   const onChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
@@ -181,7 +204,20 @@ export default function App() {
   const onSubmit = async (e) => {
     e.preventDefault();
     const err = validate();
-    if (err) { setMessage({ type: "error", text: err }); return; }
+    if (err) { 
+      setMessage({ type: "error", text: err });
+      // エラー時にフォーカスをフォーム上部に移動
+      setTimeout(() => {
+        const formElement = document.querySelector('form');
+        if (formElement) {
+          formElement.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start'
+          });
+        }
+      }, 50);
+      return; 
+    }
     // 確認モーダルを表示
     setMessage(null);
     setShowConfirmModal(true);
