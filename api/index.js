@@ -6,7 +6,11 @@ import multer from "multer";
 const app = express();
 
 // CORS設定
-app.use(cors({ origin: true }));
+app.use(cors({ 
+  origin: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 console.log("API starting...");
@@ -20,7 +24,26 @@ const upload = multer({
 // テスト用エンドポイント
 app.get("/test", (req, res) => {
   console.log("Test GET endpoint called");
-  res.json({ status: "ok", message: "API is working", timestamp: new Date().toISOString() });
+  res.json({ 
+    status: "ok", 
+    message: "API is working", 
+    timestamp: new Date().toISOString(),
+    routes: ["/test", "/orders"],
+    environment: "vercel"
+  });
+});
+
+// ルート一覧表示
+app.get("/", (req, res) => {
+  res.json({
+    message: "Medical Order API",
+    endpoints: {
+      "GET /test": "API status test",
+      "POST /orders": "Create new order",
+      "GET /orders": "List all orders",
+      "GET /orders/:id": "Get specific order"
+    }
+  });
 });
 
 // シンプルなPOSTテスト
@@ -116,4 +139,7 @@ app.use((err, req, res, next) => {
 console.log("API setup complete");
 
 // Vercel Serverless Functions用のエクスポート
-export default app;
+export default (req, res) => {
+  // すべてのリクエストをExpressアプリに渡す
+  return app(req, res);
+};
