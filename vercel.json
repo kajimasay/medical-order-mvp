@@ -15,6 +15,10 @@
       "dest": "/api/index.js"
     },
     {
+      "src": "/admin",
+      "dest": "/client/dist/admin.html"
+    },
+    {
       "src": "/(.*)",
       "dest": "/client/dist/$1"
     }

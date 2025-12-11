@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>注文管理システム - 管理画面</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+  <div class="min-h-screen py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <!-- ヘッダー -->
+      <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">📋 注文管理システム</h1>
+        <p class="mt-2 text-gray-600">医療機器注文の管理画面</p>
+      </div>
+
+      <!-- 統計カード -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-lg shadow p-6">
+          <h3 class="text-sm font-medium text-gray-500">総注文数</h3>
+          <p id="totalOrders" class="text-2xl font-bold text-blue-600">-</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+          <h3 class="text-sm font-medium text-gray-500">今日の注文</h3>
+          <p id="todayOrders" class="text-2xl font-bold text-green-600">-</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+          <h3 class="text-sm font-medium text-gray-500">今週の注文</h3>
+          <p id="weekOrders" class="text-2xl font-bold text-yellow-600">-</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+          <h3 class="text-sm font-medium text-gray-500">今月の注文</h3>
+          <p id="monthOrders" class="text-2xl font-bold text-purple-600">-</p>
+        </div>
+      </div>
+
+      <!-- 注文一覧テーブル -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-lg font-semibold text-gray-900">注文一覧</h2>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">注文ID</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">注文者</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">商品</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">数量</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">連絡先</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">注文日時</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody" class="bg-white divide-y divide-gray-200">
+              <!-- 注文データがここに表示されます -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 詳細表示モーダル -->
+      <div id="orderModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg max-w-2xl w-full m-4 max-h-screen overflow-y-auto">
+          <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-xl font-bold">注文詳細</h2>
+              <button id="closeModal" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div id="orderDetails" class="space-y-4">
+              <!-- 詳細データがここに表示されます -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 注文データを取得して表示
+    async function loadOrders() {
+      try {
+        const response = await fetch('/api/orders');
+        const orders = await response.json();
+        
+        // 統計を計算
+        updateStatistics(orders);
+        
+        // テーブルを更新
+        updateOrdersTable(orders);
+      } catch (error) {
+        console.error('Error loading orders:', error);
+      }
+    }
+
+    // 統計を更新
+    function updateStatistics(orders) {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const monthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+
+      const todayCount = orders.filter(order => new Date(order.created_at) >= today).length;
+      const weekCount = orders.filter(order => new Date(order.created_at) >= weekAgo).length;
+      const monthCount = orders.filter(order => new Date(order.created_at) >= monthAgo).length;
+
+      document.getElementById('totalOrders').textContent = orders.length;
+      document.getElementById('todayOrders').textContent = todayCount;
+      document.getElementById('weekOrders').textContent = weekCount;
+      document.getElementById('monthOrders').textContent = monthCount;
+    }
+
+    // 注文テーブルを更新
+    function updateOrdersTable(orders) {
+      const tbody = document.getElementById('ordersTableBody');
+      tbody.innerHTML = '';
+
+      orders.forEach(order => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#${order.id}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${order.full_name}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${order.product}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${order.quantity}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${order.contact_email}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(order.created_at).toLocaleDateString('ja-JP')}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600">
+            <button onclick="showOrderDetails(${order.id})" class="hover:underline">詳細表示</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    // 注文詳細を表示
+    async function showOrderDetails(orderId) {
+      try {
+        const response = await fetch(`/api/orders/${orderId}`);
+        const order = await response.json();
+        
+        const detailsDiv = document.getElementById('orderDetails');
+        detailsDiv.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><strong>注文ID:</strong> #${order.id}</div>
+            <div><strong>商品:</strong> ${order.product}</div>
+            <div><strong>数量:</strong> ${order.quantity}</div>
+            <div><strong>注文者:</strong> ${order.full_name}</div>
+            <div><strong>医院名:</strong> ${order.company_name || 'なし'}</div>
+            <div><strong>医院電話:</strong> ${order.company_phone || 'なし'}</div>
+            <div><strong>医院住所:</strong> ${order.company_address || 'なし'}</div>
+            <div><strong>自宅住所:</strong> ${order.home_address || 'なし'}</div>
+            <div><strong>自宅電話:</strong> ${order.home_phone || 'なし'}</div>
+            <div><strong>連絡者:</strong> ${order.contact_name}</div>
+            <div><strong>連絡先電話:</strong> ${order.contact_phone}</div>
+            <div><strong>連絡先Email:</strong> ${order.contact_email}</div>
+            <div><strong>医師免許証:</strong> ${order.license_path}</div>
+            <div><strong>注文日時:</strong> ${new Date(order.created_at).toLocaleString('ja-JP')}</div>
+          </div>
+        `;
+        
+        document.getElementById('orderModal').classList.remove('hidden');
+        document.getElementById('orderModal').classList.add('flex');
+      } catch (error) {
+        console.error('Error loading order details:', error);
+      }
+    }
+
+    // モーダルを閉じる
+    function closeModal() {
+      document.getElementById('orderModal').classList.add('hidden');
+      document.getElementById('orderModal').classList.remove('flex');
+    }
+
+    // イベントリスナー
+    document.getElementById('closeModal').addEventListener('click', closeModal);
+
+    // ページロード時に注文を読み込み
+    loadOrders();
+
+    // 30秒ごとに自動更新
+    setInterval(loadOrders, 30000);
+  </script>
+</body>
+</html>
