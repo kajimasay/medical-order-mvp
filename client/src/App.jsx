@@ -91,14 +91,26 @@ export default function App() {
       fd.append("contact_email", form.contact_email);
       fd.append("license", licenseFile);
 
+      console.log("Sending request to:", `${API_BASE}/api/orders`);
       const res = await fetch(`${API_BASE}/api/orders`, { method: "POST", body: fd });
+      
+      console.log("Response received:", {
+        status: res.status,
+        statusText: res.statusText,
+        headers: Object.fromEntries(res.headers.entries())
+      });
       
       // レスポンスのコンテンツタイプをチェック
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         const text = await res.text();
-        console.error("Non-JSON response:", text);
-        throw new Error("サーバーエラー: 無効なレスポンス形式");
+        console.error("Non-JSON response details:", {
+          status: res.status,
+          statusText: res.statusText,
+          contentType,
+          responseText: text
+        });
+        throw new Error(`サーバーエラー (${res.status}): ${text.substring(0, 100)}...`);
       }
       
       const data = await res.json();

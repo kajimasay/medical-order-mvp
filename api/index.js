@@ -23,6 +23,12 @@ app.get("/test", (req, res) => {
   res.json({ status: "ok", message: "API is working", timestamp: new Date().toISOString() });
 });
 
+// シンプルなPOSTテスト
+app.post("/test", (req, res) => {
+  console.log("Test POST endpoint called", { body: req.body });
+  res.json({ status: "ok", message: "POST is working", received: req.body });
+});
+
 // 簡単な注文作成API（DBなし）
 app.post("/orders", upload.single("license"), (req, res) => {
   try {
@@ -93,6 +99,12 @@ app.get("/orders/:id", (req, res) => {
     created_at: new Date().toISOString()
   };
   res.json(dummyOrder);
+});
+
+// 404ハンドラー
+app.use((req, res, next) => {
+  console.log('404 - Route not found:', req.method, req.url);
+  res.status(404).json({ error: `Route not found: ${req.method} ${req.url}` });
 });
 
 // エラーハンドリング
