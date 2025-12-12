@@ -195,8 +195,13 @@ export default async function handler(req, res) {
     
     console.log('Serving file:', fileRecord.originalName, 'Size:', fileContent.length);
     
+    // Properly encode Japanese filename for Content-Disposition header
+    const encodedFileName = encodeURIComponent(fileRecord.originalName);
+    console.log('Original filename:', fileRecord.originalName);
+    console.log('Encoded filename:', encodedFileName);
+    
     res.setHeader('Content-Type', fileRecord.type || 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${fileRecord.originalName}"`);
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodedFileName}`);
     res.setHeader('Content-Length', fileContent.length);
     
     return res.status(200).send(fileContent);
