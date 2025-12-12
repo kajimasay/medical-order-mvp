@@ -1,25 +1,70 @@
-// File management endpoint - list and access uploaded files
-let uploadedFiles = [
-  // Mock data structure for demonstration
-  {
-    id: "file_1734057600000",
-    orderId: 1001,
-    filename: "license_tanaka.pdf", 
-    originalName: "医師免許証_田中太郎.pdf",
-    uploadDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    size: "2.1MB",
-    type: "application/pdf"
-  },
-  {
-    id: "file_1734057700000", 
-    orderId: 1002,
-    filename: "license_sato.pdf",
-    originalName: "医師免許証_佐藤花子.pdf", 
-    uploadDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    size: "1.8MB",
-    type: "application/pdf"
+import fs from 'fs';
+import path from 'path';
+
+// File data persistence
+const DATA_DIR = '/tmp/cvg-data';
+const FILES_DATA_FILE = path.join(DATA_DIR, 'files.json');
+const FILES_STORAGE_DIR = path.join(DATA_DIR, 'uploads');
+
+// Ensure directories exist
+function ensureDirectories() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
   }
-];
+  if (!fs.existsSync(FILES_STORAGE_DIR)) {
+    fs.mkdirSync(FILES_STORAGE_DIR, { recursive: true });
+  }
+}
+
+// Load files data from persistent storage
+function loadFiles() {
+  ensureDirectories();
+  try {
+    if (fs.existsSync(FILES_DATA_FILE)) {
+      const data = fs.readFileSync(FILES_DATA_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Error loading files data:', error);
+  }
+  
+  // Return default mock data
+  return [
+    {
+      id: "file_1734057600000",
+      orderId: 1001,
+      filename: "license_tanaka.pdf", 
+      originalName: "医師免許証_田中太郎.pdf",
+      uploadDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      size: "2.1MB",
+      type: "application/pdf"
+    },
+    {
+      id: "file_1734057700000", 
+      orderId: 1002,
+      filename: "license_sato.pdf",
+      originalName: "医師免許証_佐藤花子.pdf", 
+      uploadDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+      size: "1.8MB",
+      type: "application/pdf"
+    }
+  ];
+}
+
+// Save files data to persistent storage
+function saveFiles(files) {
+  ensureDirectories();
+  try {
+    fs.writeFileSync(FILES_DATA_FILE, JSON.stringify(files, null, 2), 'utf8');
+    return true;
+  } catch (error) {
+    console.error('Error saving files data:', error);
+    return false;
+  }
+}
+
+// Load files at startup
+let uploadedFiles = loadFiles();
 
 export default async function handler(req, res) {
   try {
@@ -66,7 +111,10 @@ export default async function handler(req, res) {
       
       uploadedFiles.unshift(newFile);
       
+      // Save to persistent storage
+      const saved = saveFiles(uploadedFiles);
       console.log("File record added:", newFile);
+      console.log("Files data saved to disk:", saved);
       
       return res.status(200).json({
         success: true,

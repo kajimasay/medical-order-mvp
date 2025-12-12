@@ -331,6 +331,21 @@ export default function App() {
     setShowOrderDetail(false);
   };
 
+  const handleFileView = (file) => {
+    const fileUrl = `${API_BASE}/api/download-file?fileId=${file.id}`;
+    window.open(fileUrl, '_blank');
+  };
+
+  const handleFileDownload = (file) => {
+    const fileUrl = `${API_BASE}/api/download-file?fileId=${file.id}`;
+    const link = document.createElement('a');
+    link.href = fileUrl;
+    link.download = file.originalName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const onSubmit = async (e) => {
     e.preventDefault();
     const err = validate();
@@ -883,6 +898,7 @@ export default function App() {
                           <span>サイズ</span>
                           <span>アップロード日時</span>
                           <span>種類</span>
+                          <span>操作</span>
                         </div>
                         {files.map((file) => (
                           <div key={file.id} className="table-row">
@@ -891,6 +907,23 @@ export default function App() {
                             <span>{file.size}</span>
                             <span>{file.uploadDate ? new Date(file.uploadDate).toLocaleString('ja-JP') : 'N/A'}</span>
                             <span>{file.type}</span>
+                            <span>
+                              <button 
+                                className="detail-btn"
+                                onClick={() => handleFileView(file)}
+                                title="ファイルを表示"
+                                style={{ marginRight: '5px' }}
+                              >
+                                👁️ 表示
+                              </button>
+                              <button 
+                                className="detail-btn"
+                                onClick={() => handleFileDownload(file)}
+                                title="ファイルをダウンロード"
+                              >
+                                ⬇️ DL
+                              </button>
+                            </span>
                           </div>
                         ))}
                       </div>

@@ -1,58 +1,74 @@
-// Orders endpoint - with updatable mock data for admin panel
-let mockOrders = [
-  {
-    id: 1001,
-    product: "eye-booster",
-    quantity: 2,
-    full_name: "田中 太郎",
-    company_name: "田中眼科クリニック",
-    contact_name: "田中 太郎",
-    contact_phone: "03-1234-5678",
-    contact_email: "tanaka@example.com",
-    status: "pending",
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    updated_at: new Date().toISOString()
-  },
-  {
-    id: 1002,
-    product: "exosome-kit",
-    quantity: 1,
-    full_name: "佐藤 花子",
-    company_name: "佐藤総合病院",
-    contact_name: "佐藤 花子",
-    contact_phone: "03-2345-6789",
-    contact_email: "sato@hospital.com",
-    status: "processing",
-    created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    updated_at: new Date().toISOString()
-  },
-  {
-    id: 1003,
-    product: "cm-vial",
-    quantity: 3,
-    full_name: "鈴木 一郎",
-    company_name: "鈴木医院",
-    contact_name: "鈴木 一郎",
-    contact_phone: "03-3456-7890",
-    contact_email: "suzuki@clinic.jp",
-    status: "shipped",
-    created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-    updated_at: new Date().toISOString()
-  },
-  {
-    id: 1004,
-    product: "eye-booster",
-    quantity: 5,
-    full_name: "高橋 美咲",
-    company_name: "高橋皮膚科",
-    contact_name: "高橋 美咲",
-    contact_phone: "03-4567-8901",
-    contact_email: "takahashi@derma.com",
-    status: "delivered",
-    created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-    updated_at: new Date().toISOString()
+import fs from 'fs';
+import path from 'path';
+
+// Data persistence functions
+const DATA_DIR = '/tmp/cvg-data'; // Vercel /tmp directory for temporary storage
+const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
+
+// Ensure data directory exists
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
   }
-];
+}
+
+// Load orders from file
+function loadOrders() {
+  ensureDataDir();
+  try {
+    if (fs.existsSync(ORDERS_FILE)) {
+      const data = fs.readFileSync(ORDERS_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Error loading orders:', error);
+  }
+  
+  // Return default mock data if file doesn't exist or has errors
+  return [
+    {
+      id: 1001,
+      product: "eye-booster",
+      quantity: 2,
+      full_name: "田中 太郎",
+      company_name: "田中眼科クリニック",
+      contact_name: "田中 太郎",
+      contact_phone: "03-1234-5678",
+      contact_email: "tanaka@example.com",
+      status: "pending",
+      created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 1002,
+      product: "exosome-kit",
+      quantity: 1,
+      full_name: "佐藤 花子",
+      company_name: "佐藤総合病院",
+      contact_name: "佐藤 花子",
+      contact_phone: "03-2345-6789",
+      contact_email: "sato@hospital.com",
+      status: "processing",
+      created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+      updated_at: new Date().toISOString()
+    }
+  ];
+}
+
+// Save orders to file
+function saveOrders(orders) {
+  ensureDataDir();
+  try {
+    fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2), 'utf8');
+    return true;
+  } catch (error) {
+    console.error('Error saving orders:', error);
+    return false;
+  }
+}
+
+// Load orders at startup
+let mockOrders = loadOrders();
 
 export default async function handler(req, res) {
   try {
@@ -107,8 +123,11 @@ export default async function handler(req, res) {
       // Add new order to the beginning of the array (most recent first)
       mockOrders.unshift(newOrder);
       
+      // Save to persistent storage
+      const saved = saveOrders(mockOrders);
       console.log("New order added:", newOrder);
       console.log("Total orders now:", mockOrders.length);
+      console.log("Data saved to disk:", saved);
       
       // メール通知を送信（非同期で実行、失敗してもレスポンスをブロックしない）
       try {
@@ -177,7 +196,10 @@ export default async function handler(req, res) {
       mockOrders[orderIndex].status = status;
       mockOrders[orderIndex].updated_at = new Date().toISOString();
       
+      // Save to persistent storage
+      const saved = saveOrders(mockOrders);
       console.log(`Successfully updated order ${orderId} to ${status}`);
+      console.log("Order status update saved to disk:", saved);
       
       return res.status(200).json({ 
         success: true,
