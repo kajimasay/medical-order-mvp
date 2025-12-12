@@ -202,29 +202,51 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       // Add file record (called after successful upload)
-      const { orderId, filename, originalName, size, type } = req.body;
+      const { orderId, filename, originalName, size, type, fileId, content } = req.body;
       
-      // Generate unique filename
-      const timestamp = Date.now();
-      const fileExtension = originalName ? originalName.split('.').pop() : 'pdf';
-      const storedFilename = `file_${timestamp}_${orderId}.${fileExtension}`;
+      console.log('=== FILES API POST REQUEST ===');
+      console.log('Received file registration:', { fileId, orderId, originalName, hasContent: !!content });
       
-      const newFile = {
-        id: `file_${timestamp}`,
-        orderId: parseInt(orderId) || 0,
-        filename: storedFilename,
-        originalName: originalName || filename,
-        uploadDate: new Date().toISOString(),
-        size: size || 'Unknown',
-        type: type || 'application/pdf'
-      };
+      let newFile;
       
-      // Store file content in memory (demo PDF)
-      const fileContent = generateDemoPDF(originalName, orderId);
-      newFile.content = fileContent.toString('base64'); // Store as base64
+      if (fileId && content) {
+        // This is a real uploaded file from upload-file.js
+        newFile = {
+          id: fileId,
+          orderId: parseInt(orderId) || 0,
+          filename: filename,
+          originalName: originalName || filename,
+          uploadDate: new Date().toISOString(),
+          size: size || 'Unknown',
+          type: type || 'application/pdf',
+          content: content // Use the actual uploaded content
+        };
+        console.log('Registering uploaded file with actual content');
+      } else {
+        // This is for legacy/demo purposes
+        const timestamp = Date.now();
+        const fileExtension = originalName ? originalName.split('.').pop() : 'pdf';
+        const storedFilename = `file_${timestamp}_${orderId}.${fileExtension}`;
+        
+        newFile = {
+          id: `file_${timestamp}`,
+          orderId: parseInt(orderId) || 0,
+          filename: storedFilename,
+          originalName: originalName || filename,
+          uploadDate: new Date().toISOString(),
+          size: size || 'Unknown',
+          type: type || 'application/pdf'
+        };
+        
+        // Store file content in memory (demo PDF)
+        const fileContent = generateDemoPDF(originalName, orderId);
+        newFile.content = fileContent.toString('base64'); // Store as base64
+        console.log('Creating demo file content');
+      }
       
       uploadedFiles = addFile(newFile);
-      console.log("File record added:", newFile.id);
+      console.log("File record added to files.js:", newFile.id);
+      console.log("Total files in files.js:", uploadedFiles.length);
       
       return res.status(200).json({
         success: true,

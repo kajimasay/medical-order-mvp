@@ -141,6 +141,38 @@ export default async function handler(req, res) {
     console.log("Current global storage count:", global.globalFilesStorage ? global.globalFilesStorage.length : 0);
     console.log("All file IDs in storage:", global.globalFilesStorage ? global.globalFilesStorage.map(f => f.id) : []);
     
+    // Also try to call files.js API to register the file
+    try {
+      console.log("Registering file with files.js API...");
+      const fileApiUrl = process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}/api/files`
+        : 'http://localhost:3000/api/files';
+      
+      const registerResponse = await fetch(fileApiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: fileRecord.orderId,
+          filename: fileRecord.filename,
+          originalName: fileRecord.originalName,
+          size: fileRecord.size,
+          type: fileRecord.type,
+          fileId: fileRecord.id,
+          content: fileRecord.content
+        })
+      });
+      
+      if (registerResponse.ok) {
+        console.log("File registered with files.js API successfully");
+      } else {
+        console.log("Files.js API registration failed:", registerResponse.status);
+      }
+    } catch (apiError) {
+      console.log("Could not register with files.js API:", apiError.message);
+    }
+    
     return res.status(200).json({ 
       success: true,
       message: "ファイルを受け付けました",

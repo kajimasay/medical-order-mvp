@@ -260,20 +260,31 @@ export default function App() {
   };
 
   const fetchFiles = async () => {
+    console.log('=== FETCH FILES START ===');
     setLoadingFiles(true);
     try {
+      console.log('Requesting files from:', `${API_BASE}/api/files`);
       const res = await fetch(`${API_BASE}/api/files`);
+      console.log('Files API response status:', res.status);
+      
       if (res.ok) {
         const data = await res.json();
+        console.log('Files API response data:', data);
+        console.log('Files count received:', data.files ? data.files.length : 0);
+        console.log('Files list:', data.files);
         setFiles(data.files || []);
       } else {
         console.error('Failed to fetch files:', res.status);
+        const errorText = await res.text();
+        console.error('Error response:', errorText);
         setFiles([]);
       }
     } catch (err) {
       console.error('Error fetching files:', err);
+      console.error('Error details:', err.message, err.stack);
       setFiles([]);
     }
+    console.log('=== FETCH FILES END ===');
     setLoadingFiles(false);
   };
 
