@@ -28,8 +28,8 @@ function loadFiles() {
     console.error('Error loading files data:', error);
   }
   
-  // Return default mock data
-  return [
+  // Return default mock data and create physical files
+  const mockData = [
     {
       id: "file_1734057600000",
       orderId: 1001,
@@ -49,6 +49,75 @@ function loadFiles() {
       type: "application/pdf"
     }
   ];
+  
+  // Create physical mock files if they don't exist
+  mockData.forEach(file => {
+    const filePath = path.join(FILES_STORAGE_DIR, file.filename);
+    if (!fs.existsSync(filePath)) {
+      const mockPdfContent = Buffer.from(`%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count 1
+>>
+endobj
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 612 792]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 120
+>>
+stream
+BT
+/F1 16 Tf
+50 700 Td
+(${file.originalName}) Tj
+0 -30 Td
+(注文ID: ${file.orderId}) Tj
+0 -30 Td
+(※ これはデモ用の医師免許証ファイルです) Tj
+ET
+endstream
+endobj
+xref
+0 5
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000201 00000 n 
+trailer
+<<
+/Size 5
+/Root 1 0 R
+>>
+startxref
+350
+%%EOF`);
+      
+      try {
+        fs.writeFileSync(filePath, mockPdfContent);
+        console.log("Created mock file:", filePath);
+      } catch (error) {
+        console.error("Error creating mock file:", error);
+      }
+    }
+  });
+  
+  return mockData;
 }
 
 // Save files data to persistent storage
@@ -99,15 +168,88 @@ export default async function handler(req, res) {
       // Add file record (called after successful upload)
       const { orderId, filename, originalName, size, type } = req.body;
       
+      // Generate unique filename
+      const timestamp = Date.now();
+      const fileExtension = originalName ? path.extname(originalName) : '.pdf';
+      const storedFilename = `file_${timestamp}_${orderId}${fileExtension}`;
+      
       const newFile = {
-        id: `file_${Date.now()}`,
+        id: `file_${timestamp}`,
         orderId: parseInt(orderId) || 0,
-        filename: filename || 'unknown.file',
+        filename: storedFilename,
         originalName: originalName || filename,
         uploadDate: new Date().toISOString(),
         size: size || 'Unknown',
-        type: type || 'application/octet-stream'
+        type: type || 'application/pdf'
       };
+      
+      // Create physical demo file
+      try {
+        ensureDirectories();
+        const filePath = path.join(FILES_STORAGE_DIR, storedFilename);
+        
+        // Create demo PDF content
+        const mockPdfContent = Buffer.from(`%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count 1
+>>
+endobj
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 612 792]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 120
+>>
+stream
+BT
+/F1 16 Tf
+50 700 Td
+(医師免許証 - ${originalName || 'Demo File'}) Tj
+0 -30 Td
+(注文ID: ${orderId}) Tj
+0 -30 Td
+(作成日時: ${new Date().toLocaleString('ja-JP')}) Tj
+0 -30 Td
+(※ これはデモ用のファイルです) Tj
+ET
+endstream
+endobj
+xref
+0 5
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000201 00000 n 
+trailer
+<<
+/Size 5
+/Root 1 0 R
+>>
+startxref
+400
+%%EOF`);
+
+        fs.writeFileSync(filePath, mockPdfContent);
+        console.log("Physical file created:", filePath);
+      } catch (fileError) {
+        console.error("Error creating physical file:", fileError);
+      }
       
       uploadedFiles.unshift(newFile);
       

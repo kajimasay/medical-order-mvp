@@ -45,24 +45,42 @@ export default async function handler(req, res) {
 
     // Find file metadata
     const files = loadFiles();
+    console.log('Available files:', files);
+    console.log('Searching for fileId:', fileId);
+    
     const fileRecord = files.find(f => f.id === fileId);
+    console.log('Found file record:', fileRecord);
     
     if (!fileRecord) {
+      console.log('File not found in records. Available file IDs:', files.map(f => f.id));
       return res.status(404).json({
         success: false,
-        error: 'File not found'
+        error: 'File not found',
+        availableFiles: files.map(f => ({ id: f.id, name: f.originalName })),
+        searchedId: fileId
       });
     }
 
     // For demo purposes, return file metadata with mock download URL
     // In production, this would return the actual file content or a signed URL
     const filePath = path.join(FILES_STORAGE_DIR, fileRecord.filename);
+    console.log('Looking for file at path:', filePath);
+    console.log('FILES_STORAGE_DIR exists:', fs.existsSync(FILES_STORAGE_DIR));
     
     // Check if physical file exists (for demo, we'll simulate)
     const fileExists = fs.existsSync(filePath);
+    console.log('File exists:', fileExists);
     
     if (!fileExists) {
       // For demo purposes, create a mock PDF response
+      console.log('File does not exist, creating mock PDF');
+      
+      // Ensure directory exists
+      if (!fs.existsSync(FILES_STORAGE_DIR)) {
+        fs.mkdirSync(FILES_STORAGE_DIR, { recursive: true });
+        console.log('Created FILES_STORAGE_DIR:', FILES_STORAGE_DIR);
+      }
+      
       const mockPdfContent = Buffer.from(`%PDF-1.4
 1 0 obj
 <<
