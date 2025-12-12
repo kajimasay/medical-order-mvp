@@ -91,7 +91,8 @@ ${420 + streamLength}
 
 // Initialize files data
 function initializeFiles() {
-  if (global.globalFilesStorage === null) {
+  if (global.globalFilesStorage === null || global.globalFilesStorage === undefined || !Array.isArray(global.globalFilesStorage)) {
+    console.log('Initializing global file storage...');
     global.globalFilesStorage = [
       {
         id: "file_1734057600000",
@@ -132,26 +133,33 @@ function initializeFiles() {
   return global.globalFilesStorage;
 }
 
-// Get current files (including uploaded ones)
+// Get current files (always from global storage)
 function getFiles() {
-  // Make sure to get the latest from global storage
-  const initialized = initializeFiles();
-  console.log('Getting files from global storage, count:', initialized.length);
-  console.log('File IDs:', initialized.map(f => f.id));
-  return initialized;
-}
-
-// Add new file
-function addFile(file) {
-  const files = getFiles();
-  files.unshift(file);
-  console.log('File added, total files:', files.length);
-  console.log('Added file with ID:', file.id);
+  const files = initializeFiles();
+  console.log('Getting files from global storage, count:', files.length);
+  console.log('File IDs:', files.map(f => f.id));
+  console.log('Files details:', files.map(f => ({ id: f.id, orderId: f.orderId, name: f.originalName, hasContent: !!f.content })));
   return files;
 }
 
-// Initialize files at module load
-let uploadedFiles = getFiles();
+// Add new file directly to global storage
+function addFile(file) {
+  const files = initializeFiles(); // Always use the initialized global storage
+  
+  // Check if file already exists
+  const existingIndex = files.findIndex(f => f.id === file.id);
+  if (existingIndex === -1) {
+    files.unshift(file);
+    console.log('File added to global storage, total files:', files.length);
+    console.log('Added file with ID:', file.id);
+  } else {
+    // Update existing file
+    files[existingIndex] = file;
+    console.log('Updated existing file with ID:', file.id);
+  }
+  
+  return files;
+}
 
 export default async function handler(req, res) {
   console.log('=== FILES API CALLED ===');
@@ -244,9 +252,10 @@ export default async function handler(req, res) {
         console.log('Creating demo file content');
       }
       
-      uploadedFiles = addFile(newFile);
+      const allFiles = addFile(newFile);
       console.log("File record added to files.js:", newFile.id);
-      console.log("Total files in files.js:", uploadedFiles.length);
+      console.log("Total files in files.js:", allFiles.length);
+      console.log("Updated global storage file count:", global.globalFilesStorage ? global.globalFilesStorage.length : 0);
       
       return res.status(200).json({
         success: true,
