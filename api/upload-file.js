@@ -149,44 +149,21 @@ export default async function handler(req, res) {
       content: base64Content // Store actual file content
     };
 
-    // Add to global storage
+    // Add to global storage directly (more reliable in Vercel)
     addFileToGlobal(fileRecord);
     
+    console.log("=== FILE STORAGE DEBUG ===");
     console.log("File uploaded and saved to global storage:", fileId);
     console.log("Current global storage count:", global.globalFilesStorage ? global.globalFilesStorage.length : 0);
     console.log("All file IDs in storage:", global.globalFilesStorage ? global.globalFilesStorage.map(f => f.id) : []);
-    
-    // Also try to call files.js API to register the file
-    try {
-      console.log("Registering file with files.js API...");
-      const fileApiUrl = process.env.VERCEL_URL 
-        ? `https://${process.env.VERCEL_URL}/api/files`
-        : 'http://localhost:3000/api/files';
-      
-      const registerResponse = await fetch(fileApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          orderId: fileRecord.orderId,
-          filename: fileRecord.filename,
-          originalName: fileRecord.originalName,
-          size: fileRecord.size,
-          type: fileRecord.type,
-          fileId: fileRecord.id,
-          content: fileRecord.content
-        })
-      });
-      
-      if (registerResponse.ok) {
-        console.log("File registered with files.js API successfully");
-      } else {
-        console.log("Files.js API registration failed:", registerResponse.status);
-      }
-    } catch (apiError) {
-      console.log("Could not register with files.js API:", apiError.message);
-    }
+    console.log("Uploaded file details:", {
+      id: fileRecord.id,
+      orderId: fileRecord.orderId,
+      originalName: fileRecord.originalName,
+      hasContent: !!fileRecord.content,
+      contentLength: fileRecord.content ? fileRecord.content.length : 0
+    });
+    console.log("=== END FILE STORAGE DEBUG ===");
     
     return res.status(200).json({ 
       success: true,

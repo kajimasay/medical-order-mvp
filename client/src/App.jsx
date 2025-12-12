@@ -998,6 +998,18 @@ export default function App() {
                       >
                         更新
                       </button>
+                      <button 
+                        className="refresh-btn"
+                        onClick={() => {
+                          console.log("=== MANUAL DEBUG ===");
+                          console.log("Current files state:", files);
+                          console.log("Files count:", files.length);
+                          fetchFiles();
+                        }}
+                        style={{marginLeft: '10px'}}
+                      >
+                        デバッグ更新
+                      </button>
                     </div>
                     {loadingFiles ? (
                       <div className="loading">読み込み中...</div>
