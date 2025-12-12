@@ -510,32 +510,31 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "送信に失敗しました");
       
-      // 注文作成成功後、ファイル情報をファイル管理システムに登録
+      // 注文作成成功後、実際のファイルをアップロード
       if (licenseFile && data.order && data.order.id) {
         try {
-          console.log("Registering file for order:", data.order.id);
-          const fileRes = await fetch(`${API_BASE}/api/files`, {
+          console.log("Uploading file for order:", data.order.id);
+          
+          // FormDataを使用してファイルをアップロード
+          const formData = new FormData();
+          formData.append('file', licenseFile);
+          formData.append('orderId', data.order.id.toString());
+          
+          const uploadRes = await fetch(`${API_BASE}/api/upload-file`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              orderId: data.order.id,
-              filename: licenseFile.name,
-              originalName: licenseFile.name,
-              size: `${(licenseFile.size / 1024 / 1024).toFixed(1)}MB`,
-              type: licenseFile.type
-            })
+            body: formData // Content-Typeヘッダーは自動で設定される
           });
           
-          if (fileRes.ok) {
-            console.log("File information registered successfully");
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            console.log("File uploaded successfully:", uploadData);
           } else {
-            console.warn("Failed to register file information:", fileRes.status);
+            const errorData = await uploadRes.json();
+            console.warn("Failed to upload file:", errorData);
           }
         } catch (fileError) {
-          console.warn("Error registering file information:", fileError);
-          // ファイル登録エラーは注文の成功を妨げない
+          console.warn("Error uploading file:", fileError);
+          // ファイルアップロードエラーは注文の成功を妨げない
         }
       }
       

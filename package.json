@@ -31,6 +31,7 @@
     "node": "24.x"
   },
   "dependencies": {
+    "formidable": "^3.5.4",
     "pdfkit": "^0.17.2",
     "resend": "^6.6.0"
   }

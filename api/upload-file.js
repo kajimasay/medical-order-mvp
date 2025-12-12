@@ -1,18 +1,24 @@
-// File upload endpoint for license documents
+// File upload endpoint for license documents with image PDF support
+import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
 
-const DATA_DIR = '/tmp/cvg-data';
-const FILES_STORAGE_DIR = path.join(DATA_DIR, 'uploads');
+// Global file storage (shared across instances within same deployment)
+global.globalFilesStorage = global.globalFilesStorage || [];
 
-// Ensure upload directory exists
-function ensureUploadDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+// Add file to global storage
+function addFileToGlobal(file) {
+  const files = global.globalFilesStorage;
+  // Check if file already exists
+  const existingIndex = files.findIndex(f => f.id === file.id);
+  if (existingIndex === -1) {
+    files.unshift(file);
+    console.log('Added uploaded file to global storage:', file.id);
+  } else {
+    files[existingIndex] = file; // Update existing
+    console.log('Updated uploaded file in global storage:', file.id);
   }
-  if (!fs.existsSync(FILES_STORAGE_DIR)) {
-    fs.mkdirSync(FILES_STORAGE_DIR, { recursive: true });
-  }
+  return files;
 }
 
 export default async function handler(req, res) {
@@ -32,78 +38,78 @@ export default async function handler(req, res) {
 
     console.log("File upload request received");
     console.log("Headers:", req.headers);
+    console.log("Content-Type:", req.headers['content-type']);
     
-    // Ensure upload directory exists
-    ensureUploadDir();
-    
-    // For demo purposes, create a mock file and return success
-    // In production, you would use multipart/form-data parsing
-    const fileId = `file_${Date.now()}`;
-    const mockFileName = `license_${Date.now()}.pdf`;
-    const filePath = path.join(FILES_STORAGE_DIR, mockFileName);
-    
-    // Create a mock PDF file for demo
-    const mockPdfContent = Buffer.from(`%PDF-1.4
-1 0 obj
-<<
-/Type /Catalog
-/Pages 2 0 R
->>
-endobj
-2 0 obj
-<<
-/Type /Pages
-/Kids [3 0 R]
-/Count 1
->>
-endobj
-3 0 obj
-<<
-/Type /Page
-/Parent 2 0 R
-/MediaBox [0 0 612 792]
-/Contents 4 0 R
->>
-endobj
-4 0 obj
-<<
-/Length 44
->>
-stream
-BT
-/F1 24 Tf
-100 700 Td
-(Demo License Document) Tj
-ET
-endstream
-endobj
-xref
-0 5
-0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000201 00000 n 
-trailer
-<<
-/Size 5
-/Root 1 0 R
->>
-startxref
-294
-%%EOF`);
+    // Parse multipart form data
+    const form = formidable({
+      maxFiles: 1,
+      maxFileSize: 10 * 1024 * 1024, // 10MB
+      keepExtensions: true,
+      allowEmptyFiles: false
+    });
 
-    // Save mock file
-    fs.writeFileSync(filePath, mockPdfContent);
+    const [fields, files] = await form.parse(req);
+    console.log('Parsed fields:', fields);
+    console.log('Parsed files:', files);
+
+    // Get the uploaded file
+    const uploadedFile = files.file && files.file[0];
+    if (!uploadedFile) {
+      return res.status(400).json({
+        success: false,
+        error: 'No file uploaded',
+        message: 'ファイルが選択されていません'
+      });
+    }
+
+    console.log('Uploaded file info:', {
+      originalFilename: uploadedFile.originalFilename,
+      mimetype: uploadedFile.mimetype,
+      size: uploadedFile.size,
+      filepath: uploadedFile.filepath
+    });
+
+    // Validate file type (PDF only)
+    if (!uploadedFile.mimetype || !uploadedFile.mimetype.includes('pdf')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid file type',
+        message: 'PDFファイルのみアップロード可能です'
+      });
+    }
+
+    // Read file content
+    const fileBuffer = fs.readFileSync(uploadedFile.filepath);
+    const base64Content = fileBuffer.toString('base64');
     
-    console.log("Mock file saved:", filePath);
+    // Generate file metadata
+    const fileId = `file_${Date.now()}`;
+    const originalName = uploadedFile.originalFilename || `uploaded_${Date.now()}.pdf`;
+    const orderId = fields.orderId ? parseInt(fields.orderId[0]) : null;
+    
+    const fileRecord = {
+      id: fileId,
+      orderId: orderId,
+      filename: `uploaded_${Date.now()}.pdf`,
+      originalName: originalName,
+      uploadDate: new Date().toISOString(),
+      size: `${(uploadedFile.size / 1024 / 1024).toFixed(1)}MB`,
+      type: uploadedFile.mimetype,
+      content: base64Content // Store actual file content
+    };
+
+    // Add to global storage
+    addFileToGlobal(fileRecord);
+    
+    console.log("File uploaded and saved to global storage:", fileId);
     
     return res.status(200).json({ 
       success: true,
       message: "ファイルを受け付けました",
       fileId: fileId,
-      filename: mockFileName,
-      note: "デモ用のファイルが保存されました。本格運用時はクラウドストレージに保存されます。"
+      filename: originalName,
+      size: fileRecord.size,
+      note: "画像PDFファイルが正常にアップロードされました"
     });
 
   } catch (error) {
@@ -119,8 +125,6 @@ startxref
 // Vercel specific configuration for file uploads
 export const config = {
   api: {
-    bodyParser: {
-      sizeLimit: '10mb', // 10MB limit
-    },
+    bodyParser: false, // Disable body parser to handle multipart/form-data with formidable
   },
 }

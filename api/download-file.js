@@ -212,10 +212,12 @@ export default async function handler(req, res) {
     let fileContent;
     
     if (fileRecord.content) {
-      // File content stored in base64
+      // File content stored in base64 (actual uploaded file)
+      console.log('Using uploaded file content for:', fileRecord.originalName);
       fileContent = Buffer.from(fileRecord.content, 'base64');
     } else {
-      // Generate demo PDF on the fly
+      // Generate demo PDF on the fly (for demo files without actual content)
+      console.log('Generating demo PDF for:', fileRecord.originalName);
       fileContent = generateDemoPDF(fileRecord.originalName, fileRecord.orderId);
     }
     
