@@ -331,19 +331,81 @@ export default function App() {
     setShowOrderDetail(false);
   };
 
-  const handleFileView = (file) => {
-    const fileUrl = `${API_BASE}/api/download-file?fileId=${file.id}`;
-    window.open(fileUrl, '_blank');
+  const handleFileView = async (file) => {
+    console.log('=== FILE VIEW ATTEMPT ===');
+    console.log('File:', file);
+    console.log('API_BASE:', API_BASE);
+    
+    try {
+      // First test if API is accessible
+      const testUrl = `${API_BASE}/api/test-api`;
+      console.log('Testing API connectivity:', testUrl);
+      
+      const testResponse = await fetch(testUrl);
+      console.log('Test API response:', testResponse.status);
+      
+      if (!testResponse.ok) {
+        console.error('API test failed:', testResponse.status);
+        alert('APIサーバーに接続できません。しばらく待ってから再試行してください。');
+        return;
+      }
+      
+      // Try to access the file
+      const fileUrl = `${API_BASE}/api/download-file?fileId=${file.id}`;
+      console.log('Opening file URL:', fileUrl);
+      
+      const fileResponse = await fetch(fileUrl);
+      console.log('File response status:', fileResponse.status);
+      
+      if (!fileResponse.ok) {
+        const errorData = await fileResponse.text();
+        console.error('File access error:', errorData);
+        alert(`ファイルの取得に失敗しました: ${fileResponse.status}`);
+        return;
+      }
+      
+      // Open in new window
+      window.open(fileUrl, '_blank');
+    } catch (error) {
+      console.error('File view error:', error);
+      alert(`ファイル表示エラー: ${error.message}`);
+    }
   };
 
-  const handleFileDownload = (file) => {
-    const fileUrl = `${API_BASE}/api/download-file?fileId=${file.id}`;
-    const link = document.createElement('a');
-    link.href = fileUrl;
-    link.download = file.originalName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleFileDownload = async (file) => {
+    console.log('=== FILE DOWNLOAD ATTEMPT ===');
+    console.log('File:', file);
+    
+    try {
+      const fileUrl = `${API_BASE}/api/download-file?fileId=${file.id}`;
+      console.log('Download URL:', fileUrl);
+      
+      const response = await fetch(fileUrl);
+      console.log('Download response status:', response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Download error:', errorData);
+        alert(`ファイルのダウンロードに失敗しました: ${response.status}`);
+        return;
+      }
+      
+      // Create download link
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.originalName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      console.log('Download completed successfully');
+    } catch (error) {
+      console.error('Download error:', error);
+      alert(`ダウンロードエラー: ${error.message}`);
+    }
   };
 
   const onSubmit = async (e) => {

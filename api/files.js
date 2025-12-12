@@ -115,6 +115,11 @@ function addFile(file) {
 let uploadedFiles = getFiles();
 
 export default async function handler(req, res) {
+  console.log('=== FILES API CALLED ===');
+  console.log('Method:', req.method);
+  console.log('URL:', req.url);
+  console.log('Query:', req.query);
+  
   try {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -122,6 +127,7 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
     if (req.method === 'OPTIONS') {
+      console.log('FILES: OPTIONS request handled');
       return res.status(200).end();
     }
 

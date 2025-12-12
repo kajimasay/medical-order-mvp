@@ -93,6 +93,12 @@ startxref
 }
 
 export default async function handler(req, res) {
+  console.log('=== DOWNLOAD FILE API CALLED ===');
+  console.log('Method:', req.method);
+  console.log('URL:', req.url);
+  console.log('Query:', req.query);
+  console.log('Headers:', req.headers);
+  
   try {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -100,16 +106,20 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
     if (req.method === 'OPTIONS') {
+      console.log('OPTIONS request handled');
       return res.status(200).end();
     }
 
     if (req.method !== 'GET') {
+      console.log('Invalid method:', req.method);
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
     const { fileId } = req.query;
+    console.log('Requested fileId:', fileId);
     
     if (!fileId) {
+      console.log('No fileId provided');
       return res.status(400).json({
         success: false,
         error: 'File ID is required'
@@ -118,6 +128,7 @@ export default async function handler(req, res) {
 
     // Find file metadata
     const files = initializeSharedFiles();
+    console.log('Total available files:', files.length);
     console.log('Available files:', files.map(f => ({ id: f.id, name: f.originalName })));
     console.log('Searching for fileId:', fileId);
     
@@ -154,11 +165,18 @@ export default async function handler(req, res) {
     return res.status(200).send(fileContent);
 
   } catch (error) {
-    console.error('File download error:', error);
+    console.error('=== FILE DOWNLOAD ERROR ===');
+    console.error('Error details:', error);
+    console.error('Error stack:', error.stack);
     return res.status(500).json({
       success: false,
       error: 'Internal server error',
-      message: 'ファイルダウンロード中にエラーが発生しました'
+      message: 'ファイルダウンロード中にエラーが発生しました',
+      debug: {
+        errorMessage: error.message,
+        errorName: error.name,
+        timestamp: new Date().toISOString()
+      }
     });
   }
 }
