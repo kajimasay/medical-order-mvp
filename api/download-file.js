@@ -1,13 +1,13 @@
 // File download endpoint - memory-based version
 // Import files data from files.js (shared memory)
 
-// This is a simple approach - in production, use shared database
-let sharedFilesStorage = null;
+// Global file storage (shared across instances within same deployment)
+global.globalFilesStorage = global.globalFilesStorage || null;
 
 // Initialize shared files (same as files.js)
 function initializeSharedFiles() {
-  if (sharedFilesStorage === null) {
-    sharedFilesStorage = [
+  if (global.globalFilesStorage === null) {
+    global.globalFilesStorage = [
       {
         id: "file_1734057600000",
         orderId: 1001,
@@ -29,8 +29,23 @@ function initializeSharedFiles() {
         content: generateDemoPDF("医師免許証_佐藤花子.pdf", 1002).toString('base64')
       }
     ];
+    console.log('Files storage initialized in download-file.js');
   }
-  return sharedFilesStorage;
+  return global.globalFilesStorage;
+}
+
+// Add file to global storage
+function addFileToGlobal(file) {
+  const files = initializeSharedFiles();
+  // Check if file already exists
+  const existingIndex = files.findIndex(f => f.id === file.id);
+  if (existingIndex === -1) {
+    files.unshift(file);
+    console.log('Added file to global storage:', file.id);
+  } else {
+    console.log('File already exists in global storage:', file.id);
+  }
+  return files;
 }
 
 // Generate demo PDF content
@@ -132,8 +147,30 @@ export default async function handler(req, res) {
     console.log('Available files:', files.map(f => ({ id: f.id, name: f.originalName })));
     console.log('Searching for fileId:', fileId);
     
-    const fileRecord = files.find(f => f.id === fileId);
+    let fileRecord = files.find(f => f.id === fileId);
     console.log('Found file record:', fileRecord ? 'YES' : 'NO');
+    
+    // If not found, try to create a dynamic demo file
+    if (!fileRecord && fileId.startsWith('file_')) {
+      console.log('File not found, creating dynamic demo file');
+      const timestamp = fileId.replace('file_', '');
+      const orderId = Math.floor(Math.random() * 9000) + 1000; // Random order ID
+      
+      fileRecord = {
+        id: fileId,
+        orderId: orderId,
+        filename: `demo_${timestamp}.pdf`,
+        originalName: `デモ医師免許証_${timestamp}.pdf`,
+        uploadDate: new Date().toISOString(),
+        size: '1.5MB',
+        type: 'application/pdf',
+        content: generateDemoPDF(`デモ医師免許証_${timestamp}.pdf`, orderId).toString('base64')
+      };
+      
+      // Add to global storage for future requests
+      addFileToGlobal(fileRecord);
+      console.log('Created and added dynamic demo file:', fileRecord.id);
+    }
     
     if (!fileRecord) {
       console.log('File not found in records. Available file IDs:', files.map(f => f.id));

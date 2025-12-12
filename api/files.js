@@ -1,7 +1,8 @@
 // In-memory file storage for Vercel serverless functions
 // Note: In production, use cloud storage (Vercel Blob, AWS S3, etc.)
 
-let filesStorage = null;
+// Use global storage to share across API functions
+global.globalFilesStorage = global.globalFilesStorage || null;
 
 // Generate demo PDF content
 function generateDemoPDF(originalName, orderId) {
@@ -64,8 +65,8 @@ startxref
 
 // Initialize files data
 function initializeFiles() {
-  if (filesStorage === null) {
-    filesStorage = [
+  if (global.globalFilesStorage === null) {
+    global.globalFilesStorage = [
       {
         id: "file_1734057600000",
         orderId: 1001,
@@ -87,15 +88,15 @@ function initializeFiles() {
     ];
     
     // Add demo content to files
-    filesStorage.forEach(file => {
+    global.globalFilesStorage.forEach(file => {
       if (!file.content) {
         file.content = generateDemoPDF(file.originalName, file.orderId).toString('base64');
       }
     });
     
-    console.log('Files initialized with', filesStorage.length, 'items');
+    console.log('Files initialized with', global.globalFilesStorage.length, 'items');
   }
-  return filesStorage;
+  return global.globalFilesStorage;
 }
 
 // Get current files
@@ -108,6 +109,7 @@ function addFile(file) {
   const files = getFiles();
   files.unshift(file);
   console.log('File added, total files:', files.length);
+  console.log('Added file with ID:', file.id);
   return files;
 }
 
