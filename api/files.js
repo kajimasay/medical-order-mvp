@@ -4,9 +4,18 @@
 // Use global storage to share across API functions
 global.globalFilesStorage = global.globalFilesStorage || null;
 
-// Generate demo PDF content
+// Generate simple but functional PDF content
 function generateDemoPDF(originalName, orderId) {
-  return Buffer.from(`%PDF-1.4
+  const fileName = (originalName || 'Demo File').replace(/[^\x20-\x7E]/g, '?'); // Replace non-ASCII
+  const orderIdStr = orderId ? orderId.toString() : '0000';
+  const currentDate = new Date().toISOString().slice(0, 19);
+  
+  // Create a properly formatted PDF with correct structure
+  const content = `Medical License Document\\nFile: ${fileName}\\nOrder ID: ${orderIdStr}\\nDate: ${currentDate}\\nThis is a demo file for testing purposes.`;
+  const contentStream = `BT /F1 12 Tf 50 750 Td (Medical License Document) Tj 0 -20 Td (File: ${fileName.slice(0, 50)}) Tj 0 -20 Td (Order ID: ${orderIdStr}) Tj 0 -20 Td (Date: ${currentDate}) Tj 0 -30 Td (This is a demo file) Tj 0 -20 Td (for testing purposes.) Tj ET`;
+  const streamLength = contentStream.length;
+  
+  const pdfContent = `%PDF-1.4
 1 0 obj
 <<
 /Type /Catalog
@@ -24,43 +33,45 @@ endobj
 <<
 /Type /Page
 /Parent 2 0 R
+/Resources <<
+  /Font <<
+    /F1 <<
+      /Type /Font
+      /Subtype /Type1
+      /BaseFont /Helvetica
+    >>
+  >>
+>>
 /MediaBox [0 0 612 792]
 /Contents 4 0 R
 >>
 endobj
 4 0 obj
 <<
-/Length 120
+/Length ${streamLength}
 >>
 stream
-BT
-/F1 16 Tf
-50 700 Td
-(医師免許証 - ${originalName || 'Demo File'}) Tj
-0 -30 Td
-(注文ID: ${orderId}) Tj
-0 -30 Td
-(作成日時: ${new Date().toLocaleString('ja-JP')}) Tj
-0 -30 Td
-(※ これはデモ用のファイルです) Tj
-ET
+${contentStream}
 endstream
 endobj
 xref
 0 5
 0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000201 00000 n 
+0000000010 00000 n 
+0000000053 00000 n 
+0000000125 00000 n 
+0000000348 00000 n 
 trailer
 <<
 /Size 5
 /Root 1 0 R
 >>
 startxref
-350
-%%EOF`);
+${420 + streamLength}
+%%EOF`;
+
+  console.log('Generated PDF content length:', pdfContent.length);
+  return Buffer.from(pdfContent, 'utf8');
 }
 
 // Initialize files data
@@ -90,7 +101,14 @@ function initializeFiles() {
     // Add demo content to files
     global.globalFilesStorage.forEach(file => {
       if (!file.content) {
-        file.content = generateDemoPDF(file.originalName, file.orderId).toString('base64');
+        try {
+          const pdfBuffer = generateDemoPDF(file.originalName, file.orderId);
+          file.content = pdfBuffer.toString('base64');
+        } catch (error) {
+          console.error('Error generating PDF for file:', file.id, error);
+          // Use fallback content
+          file.content = Buffer.from('PDF generation failed').toString('base64');
+        }
       }
     });
     
