@@ -91,12 +91,27 @@ export default async function handler(req, res) {
       filepath: uploadedFile.filepath
     });
 
-    // Validate file type (PDF only)
-    if (!uploadedFile.mimetype || !uploadedFile.mimetype.includes('pdf')) {
+    // Validate file type (PDF only) - more flexible validation
+    const fileName = uploadedFile.originalFilename || '';
+    const mimeType = uploadedFile.mimetype || '';
+    const isValidPDF = 
+      mimeType.includes('pdf') || 
+      mimeType.includes('application/pdf') ||
+      fileName.toLowerCase().endsWith('.pdf') ||
+      mimeType === 'application/octet-stream'; // Sometimes PDFs are sent as octet-stream
+    
+    console.log('File validation:', {
+      fileName,
+      mimeType,
+      isValidPDF,
+      endsWithPdf: fileName.toLowerCase().endsWith('.pdf')
+    });
+
+    if (!isValidPDF) {
       return res.status(400).json({
         success: false,
         error: 'Invalid file type',
-        message: 'PDFファイルのみアップロード可能です'
+        message: `PDFファイルのみアップロード可能です。受信したファイル: ${fileName} (${mimeType})`
       });
     }
 

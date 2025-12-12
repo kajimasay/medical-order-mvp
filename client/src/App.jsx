@@ -681,7 +681,7 @@ export default function App() {
           <h2 className="font-semibold mb-3">添付資料</h2>
           <label className="block">
             <span className="text-sm">医師免許状（PDF/PNG/JPG）をアップロードしてください。<span className="text-red-500"> *</span></span>
-            <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e)=> setLicenseFile(e.target.files?.[0] || null)} className="mt-1 w-full border rounded p-2" />
+            <input type="file" accept=".pdf" onChange={(e)=> setLicenseFile(e.target.files?.[0] || null)} className="mt-1 w-full border rounded p-2" />
           </label>
         </section>
 
