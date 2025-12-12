@@ -42,6 +42,7 @@ export default function App() {
   const [adminTab, setAdminTab] = useState('orders'); // 'orders' or 'files'
   const [files, setFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [showConsentModal, setShowConsentModal] = useState(false);
 
   // デバッグ用: state変化を監視
   useEffect(() => {
@@ -651,10 +652,27 @@ export default function App() {
           </label>
         </section>
 
-        <label className="flex items-center gap-2">
-          <input type="checkbox" name="consent" checked={form.consent} onChange={onChange} />
-          <span className="text-sm">入力内容を次回のためにこの端末に保存することと、注文処理のために送信することに同意します。</span>
-        </label>
+        <div className="flex items-center justify-between p-4 border rounded-lg bg-gray-50">
+          <div className="flex items-center gap-2">
+            <input 
+              type="checkbox" 
+              name="consent" 
+              checked={form.consent} 
+              readOnly
+              className="cursor-pointer"
+            />
+            <span className="text-sm font-medium">
+              {form.consent ? '✓ 利用規約とプライバシーポリシーに同意済み' : '利用規約とプライバシーポリシーの同意が必要です'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowConsentModal(true)}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            利用規約を読む
+          </button>
+        </div>
 
         <button disabled={submitting} className="w-full sm:w-auto px-5 py-2 rounded bg-blue-600 text-white disabled:opacity-60">
           注文内容を確認
@@ -995,6 +1013,81 @@ export default function App() {
             </div>
             <div className="admin-modal-footer">
               <small>🔐 セキュアアクセス | ショートカット: {navigator.platform.includes('Mac') ? '⌘+Shift+K' : 'Ctrl+Shift+Alt+M'}</small>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 同意モーダル */}
+      {showConsentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-90vh overflow-y-auto">
+            <div className="p-6 border-b">
+              <h3 className="text-xl font-semibold text-gray-800">利用規約とプライバシーポリシー</h3>
+              <p className="text-sm text-gray-600 mt-1">以下の内容をご確認いただき、同意いただける場合は「同意する」をクリックしてください。</p>
+            </div>
+            <div className="p-6 space-y-6 max-h-96 overflow-y-auto">
+              <section>
+                <h4 className="text-lg font-semibold mb-3">個人情報の収集と利用</h4>
+                <div className="space-y-2 text-sm text-gray-700">
+                  <p>・ お客様から提供いただいた個人情報（氏名、連絡先、住所等）は、注文処理および商品配送の目的でのみ使用します。</p>
+                  <p>・ 第三者への情報提供は、法令で定められた場合を除き行いません。</p>
+                  <p>・ 収集した情報は、適切なセキュリティ対策を講じて管理します。</p>
+                </div>
+              </section>
+              
+              <section>
+                <h4 className="text-lg font-semibold mb-3">データの保存と管理</h4>
+                <div className="space-y-2 text-sm text-gray-700">
+                  <p>・ 入力いただいた情報は、次回の入力の簡略化のため、お使いの端末に一時的に保存されます。</p>
+                  <p>・ 保存された情報は、ブラウザのローカルストレージ機能を使用し、第三者がアクセスできない形で保存されます。</p>
+                  <p>・ お客様はいつでも保存された情報を削除することができます。</p>
+                </div>
+              </section>
+              
+              <section>
+                <h4 className="text-lg font-semibold mb-3">医師免許証の取り扱い</h4>
+                <div className="space-y-2 text-sm text-gray-700">
+                  <p>・ アップロードいただいた医師免許証は、本人確認の目的でのみ使用します。</p>
+                  <p>・ 免許証の情報は、注文処理完了後、適切な期間内に安全に削除します。</p>
+                  <p>・ 免許証情報の不正使用や漏洩を防止するため、厳格なセキュリティ対策を実施しています。</p>
+                </div>
+              </section>
+              
+              <section>
+                <h4 className="text-lg font-semibold mb-3">お問い合わせ</h4>
+                <div className="space-y-2 text-sm text-gray-700">
+                  <p>本サービスやプライバシーポリシーに関するお問い合わせは、下記までご連絡ください。</p>
+                  <p className="font-medium">Cell Vision Global Limited<br/>メール: support@cellvisionglobal.com</p>
+                </div>
+              </section>
+            </div>
+            <div className="p-6 border-t bg-gray-50 flex justify-between">
+              <button 
+                onClick={() => setShowConsentModal(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                闉じる
+              </button>
+              <div className="space-x-3">
+                <button 
+                  onClick={() => {
+                    setShowConsentModal(false);
+                  }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
+                >
+                  同意しない
+                </button>
+                <button 
+                  onClick={() => {
+                    setForm(prev => ({ ...prev, consent: true }));
+                    setShowConsentModal(false);
+                  }}
+                  className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                >
+                  同意する
+                </button>
+              </div>
             </div>
           </div>
         </div>
