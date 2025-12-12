@@ -48,15 +48,30 @@ function addFileToGlobal(file) {
   return files;
 }
 
-// Generate simple but functional PDF content
+// Generate medical license PDF content with proper Japanese content
 function generateDemoPDF(originalName, orderId) {
-  const fileName = (originalName || 'Demo File').replace(/[^\x20-\x7E]/g, '?'); // Replace non-ASCII
+  const fileName = originalName || 'Demo File';
   const orderIdStr = orderId ? orderId.toString() : '0000';
-  const currentDate = new Date().toISOString().slice(0, 19);
+  const currentDate = new Date().toLocaleDateString('ja-JP');
   
-  // Create a properly formatted PDF with correct structure
-  const content = `Medical License Document\\nFile: ${fileName}\\nOrder ID: ${orderIdStr}\\nDate: ${currentDate}\\nThis is a demo file for testing purposes.`;
-  const contentStream = `BT /F1 12 Tf 50 750 Td (Medical License Document) Tj 0 -20 Td (File: ${fileName.slice(0, 50)}) Tj 0 -20 Td (Order ID: ${orderIdStr}) Tj 0 -20 Td (Date: ${currentDate}) Tj 0 -30 Td (This is a demo file) Tj 0 -20 Td (for testing purposes.) Tj ET`;
+  // Extract doctor name from filename
+  let doctorName = 'Tanaka Taro';
+  if (fileName.includes('田中太郎')) {
+    doctorName = 'Tanaka Taro';
+  } else if (fileName.includes('佐藤花子')) {
+    doctorName = 'Sato Hanako';  
+  } else if (fileName.includes('田中')) {
+    doctorName = 'Tanaka';
+  } else if (fileName.includes('佐藤')) {
+    doctorName = 'Sato';
+  }
+  
+  // Generate license number
+  const licenseNumber = `第${String(Math.floor(Math.random() * 900000) + 100000)}号`;
+  const issueDate = new Date(Date.now() - Math.floor(Math.random() * 365 * 5) * 24 * 60 * 60 * 1000).toLocaleDateString('ja-JP');
+  
+  const contentStream = `BT /F1 16 Tf 200 720 Td (MEDICAL LICENSE) Tj /F1 14 Tf 220 700 Td (Ishimen-kyosho) Tj /F1 12 Tf 50 650 Td (License No: ${licenseNumber}) Tj 0 -25 Td (Doctor Name: ${doctorName}) Tj 0 -25 Td (Specialty: Internal Medicine) Tj 0 -25 Td (Issue Date: ${issueDate}) Tj 0 -25 Td (Valid Until: 2030/12/31) Tj 0 -40 Td (Issued by: Ministry of Health, Labour and Welfare) Tj 0 -25 Td (Japan Medical Association) Tj 0 -40 Td (Document Details:) Tj 0 -20 Td (Order ID: ${orderIdStr}) Tj 0 -20 Td (File: ${fileName}) Tj 0 -20 Td (Generated: ${currentDate}) Tj 0 -40 Td (This medical license certifies that the above) Tj 0 -20 Td (named person is qualified to practice medicine) Tj 0 -20 Td (in accordance with Japanese medical law.) Tj ET`;
+  
   const streamLength = contentStream.length;
   
   const pdfContent = `%PDF-1.4
@@ -82,7 +97,7 @@ endobj
     /F1 <<
       /Type /Font
       /Subtype /Type1
-      /BaseFont /Helvetica
+      /BaseFont /Helvetica-Bold
     >>
   >>
 >>
@@ -114,7 +129,7 @@ startxref
 ${420 + streamLength}
 %%EOF`;
 
-  console.log('Generated PDF content length:', pdfContent.length);
+  console.log('Generated medical license PDF content length:', pdfContent.length);
   return Buffer.from(pdfContent, 'utf8');
 }
 
