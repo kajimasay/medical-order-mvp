@@ -37,6 +37,20 @@ export default function App() {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [orderResult, setOrderResult] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showOrderDetail, setShowOrderDetail] = useState(false);
+  const [adminTab, setAdminTab] = useState('orders'); // 'orders' or 'files'
+  const [files, setFiles] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+
+  // デバッグ用: state変化を監視
+  useEffect(() => {
+    console.log("showOrderDetail state changed:", showOrderDetail);
+  }, [showOrderDetail]);
+
+  useEffect(() => {
+    console.log("selectedOrder state changed:", selectedOrder);
+  }, [selectedOrder]);
 
   // 初回読み込み: 顧客情報を localStorage から復元
   useEffect(() => {
@@ -117,23 +131,33 @@ export default function App() {
   // エラーメッセージが表示された時に自動的にトップにスクロール
   useEffect(() => {
     if (message && message.type === "error") {
-      // フォームのトップまたはエラーメッセージまでスムーズにスクロール
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      });
+      console.log("Error message detected, scrolling to top");
       
-      // さらに正確にエラーメッセージの位置にスクロールしたい場合
-      const errorElement = document.querySelector('.alert');
-      if (errorElement) {
-        setTimeout(() => {
-          errorElement.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'start',
-            inline: 'nearest'
-          });
-        }, 100);
-      }
+      // 即座にトップまでスクロール（確実性を重視）
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      window.scrollTo(0, 0);
+      
+      // 少し遅延してスムーズスクロールも実行
+      setTimeout(() => {
+        window.scrollTo({
+          top: 0,
+          left: 0,
+          behavior: 'smooth'
+        });
+        
+        // エラーメッセージ要素が存在する場合はそこにフォーカス
+        const errorElement = document.querySelector('.alert, .error-message, [class*="error"]');
+        if (errorElement) {
+          setTimeout(() => {
+            errorElement.scrollIntoView({ 
+              behavior: 'smooth', 
+              block: 'center',
+              inline: 'nearest'
+            });
+          }, 300);
+        }
+      }, 150);
     }
   }, [message]);
 
@@ -162,21 +186,26 @@ export default function App() {
     // セキュアなパスワード（実際の運用では環境変数から取得推奨）
     const correctPassword = "CVG2024Admin#";
     
-    if (adminPassword === correctPassword) {
+    if (adminPassword.trim() === correctPassword) {
+      console.log("Admin login successful");
       setAdminAuthenticated(true);
       setShowAdminLogin(false);
       setAdminError("");
-      setAdminPassword("");
       
       // セッション管理: 30分後に自動ログアウト
       setTimeout(() => {
-        if (adminAuthenticated) {
-          handleAdminLogout();
-          alert("セキュリティのため30分後に自動ログアウトしました");
-        }
+        handleAdminLogout();
+        alert("セキュリティのため30分後に自動ログアウトしました");
       }, 30 * 60 * 1000); // 30分
       
-      toggleAdminModal();
+      // パスワードクリアは最後に
+      setAdminPassword("");
+      
+      // 管理画面を表示
+      if (!showAdminModal) {
+        fetchOrders();
+      }
+      setShowAdminModal(true);
     } else {
       setAdminError("パスワードが正しくありません");
       setAdminPassword("");
@@ -226,23 +255,77 @@ export default function App() {
     setLoadingOrders(false);
   };
 
+  const fetchFiles = async () => {
+    setLoadingFiles(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/files`);
+      if (res.ok) {
+        const data = await res.json();
+        setFiles(data.files || []);
+      } else {
+        console.error('Failed to fetch files:', res.status);
+        setFiles([]);
+      }
+    } catch (err) {
+      console.error('Error fetching files:', err);
+      setFiles([]);
+    }
+    setLoadingFiles(false);
+  };
+
   const updateOrderStatus = async (orderId, newStatus) => {
+    console.log(`Updating order ${orderId} to status: ${newStatus}`);
+    
     try {
       const res = await fetch(`${API_BASE}/api/orders`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: orderId, status: newStatus })
       });
-      if (res.ok) {
-        const result = await res.json();
-        console.log('Status update result:', result);
-        await fetchOrders(); // Refresh orders
+      
+      const result = await res.json();
+      console.log('Status update response:', result);
+      
+      if (res.ok && result.success) {
+        console.log(`Successfully updated order ${orderId} to ${newStatus}`);
+        
+        // Optimistically update local state immediately
+        setOrders(prevOrders => 
+          prevOrders.map(order => 
+            order.id == orderId 
+              ? { ...order, status: newStatus, updated_at: new Date().toISOString() }
+              : order
+          )
+        );
+        
+        // Also refresh from server to ensure consistency
+        setTimeout(() => fetchOrders(), 100);
       } else {
-        console.error('Failed to update order status:', res.status);
+        console.error('Failed to update order status:', result);
       }
     } catch (err) {
       console.error('Error updating order status:', err);
     }
+  };
+
+  const showOrderDetails = (order) => {
+    console.log("=== showOrderDetails called ===");
+    console.log("Order object:", order);
+    console.log("Current showOrderDetail state:", showOrderDetail);
+    console.log("Current selectedOrder state:", selectedOrder);
+    
+    setSelectedOrder(order);
+    setShowOrderDetail(true);
+    
+    console.log("States updated - selectedOrder:", order);
+    console.log("States updated - showOrderDetail:", true);
+    console.log("=== End showOrderDetails ===");
+  };
+
+  const closeOrderDetail = () => {
+    console.log("Closing order detail modal");
+    setSelectedOrder(null);
+    setShowOrderDetail(false);
   };
 
   const onSubmit = async (e) => {
@@ -250,16 +333,43 @@ export default function App() {
     const err = validate();
     if (err) { 
       setMessage({ type: "error", text: err });
-      // エラー時にフォーカスをフォーム上部に移動
+      
+      // エラー時に確実にページトップまでスクロール
+      // 複数の方法を組み合わせて確実にスクロール
+      
+      // 1. 即座にトップまでスクロール
+      window.scrollTo(0, 0);
+      
+      // 2. スムーズスクロールでも確実にトップまで
       setTimeout(() => {
+        window.scrollTo({
+          top: 0,
+          left: 0,
+          behavior: 'smooth'
+        });
+        
+        // 3. フォーム要素も確実にトップに表示
         const formElement = document.querySelector('form');
         if (formElement) {
           formElement.scrollIntoView({ 
             behavior: 'smooth', 
-            block: 'start'
+            block: 'start',
+            inline: 'nearest'
           });
         }
-      }, 50);
+        
+        // 4. さらにエラーメッセージにフォーカス
+        const errorElement = document.querySelector('.alert');
+        if (errorElement) {
+          setTimeout(() => {
+            errorElement.scrollIntoView({ 
+              behavior: 'smooth', 
+              block: 'center'
+            });
+          }, 200);
+        }
+      }, 100);
+      
       return; 
     }
     // 確認モーダルを表示
@@ -271,22 +381,31 @@ export default function App() {
     setShowConfirmModal(false);
     setSubmitting(true);
     try {
-      const fd = new FormData();
-      fd.append("product", form.product);
-      fd.append("quantity", String(form.quantity));
-      fd.append("full_name", form.full_name);
-      fd.append("company_name", form.company_name);
-      fd.append("company_phone", form.company_phone);
-      fd.append("company_address", form.company_address);
-      fd.append("home_address", form.home_address);
-      fd.append("home_phone", form.home_phone);
-      fd.append("contact_name", form.contact_name);
-      fd.append("contact_phone", form.contact_phone);
-      fd.append("contact_email", form.contact_email);
-      fd.append("license", licenseFile);
+      const orderData = {
+        product: form.product,
+        quantity: String(form.quantity),
+        full_name: form.full_name,
+        company_name: form.company_name,
+        company_phone: form.company_phone,
+        company_address: form.company_address,
+        home_address: form.home_address,
+        home_phone: form.home_phone,
+        contact_name: form.contact_name,
+        contact_phone: form.contact_phone,
+        contact_email: form.contact_email,
+        license_file: licenseFile ? licenseFile.name : null
+      };
 
+      console.log("Sending order data:", orderData);
       console.log("Sending request to:", `${API_BASE}/api/orders`);
-      const res = await fetch(`${API_BASE}/api/orders`, { method: "POST", body: fd });
+      
+      const res = await fetch(`${API_BASE}/api/orders`, { 
+        method: "POST", 
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(orderData)
+      });
       
       console.log("Response received:", {
         status: res.status,
@@ -314,6 +433,12 @@ export default function App() {
       setOrderResult(data);
       setShowSuccessModal(true);
       
+      // 管理画面が開いている場合は注文リストを更新
+      if (showAdminModal && adminAuthenticated) {
+        console.log("Refreshing admin orders after new submission");
+        await fetchOrders();
+      }
+      
       // 送信成功後、ファイルと同意のみリセット
       setLicenseFile(null);
       setForm((f) => ({ ...f, consent: false }));
@@ -330,7 +455,10 @@ export default function App() {
       <p className="text-sm text-gray-600 mb-6">※ お手数ですが、下記のご情報をご記入ください。</p>
 
       {message && (
-        <div className={`mb-4 p-3 rounded ${message.type === "error" ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}`}>
+        <div 
+          id="form-message" 
+          className={`alert mb-4 p-3 rounded ${message.type === "error" ? "bg-red-100 text-red-800 error-message" : "bg-green-100 text-green-800 success-message"}`}
+        >
           {message.text}
         </div>
       )}
@@ -592,19 +720,40 @@ export default function App() {
               </div>
             </div>
             <div className="admin-modal-content">
-              {loadingOrders ? (
-                <div className="loading">読み込み中...</div>
-              ) : (
-                <div className="orders-list">
-                  <div className="orders-header">
-                    <h3>全注文一覧 ({orders.length}件)</h3>
-                    <button 
-                      className="refresh-btn"
-                      onClick={fetchOrders}
-                    >
-                      更新
-                    </button>
-                  </div>
+              <div className="admin-tabs">
+                <div className="tab-buttons">
+                  <button 
+                    className={`tab-btn ${adminTab === 'orders' ? 'active' : ''}`}
+                    onClick={() => setAdminTab('orders')}
+                  >
+                    📋 注文管理
+                  </button>
+                  <button 
+                    className={`tab-btn ${adminTab === 'files' ? 'active' : ''}`}
+                    onClick={() => {
+                      setAdminTab('files');
+                      fetchFiles();
+                    }}
+                  >
+                    📁 ファイル管理
+                  </button>
+                </div>
+              </div>
+
+              {adminTab === 'orders' && (
+                loadingOrders ? (
+                  <div className="loading">読み込み中...</div>
+                ) : (
+                  <div className="orders-list">
+                    <div className="orders-header">
+                      <h3>全注文一覧 ({orders.length}件)</h3>
+                      <button 
+                        className="refresh-btn"
+                        onClick={fetchOrders}
+                      >
+                        更新
+                      </button>
+                    </div>
                   {orders.length === 0 ? (
                     <p>注文データがありません</p>
                   ) : (
@@ -617,9 +766,16 @@ export default function App() {
                         <span>Email</span>
                         <span>作成日時</span>
                         <span>ステータス</span>
+                        <span>操作</span>
                       </div>
                       {orders.map((order) => (
-                        <div key={order.id} className="table-row">
+                        <div 
+                          key={order.id} 
+                          className="table-row"
+                          onClick={(e) => {
+                            console.log("Table row clicked:", e.target);
+                          }}
+                        >
                           <span>{order.id}</span>
                           <span>{PRODUCTS.find(p => p.id === order.product)?.name || order.product}</span>
                           <span>{order.quantity}</span>
@@ -629,7 +785,14 @@ export default function App() {
                           <span>
                             <select 
                               value={order.status || 'pending'}
-                              onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+                              onChange={(e) => {
+                                console.log("Status select changed");
+                                updateOrderStatus(order.id, e.target.value);
+                              }}
+                              onClick={(e) => {
+                                console.log("Status select clicked");
+                                e.stopPropagation();
+                              }}
                               className="status-select"
                             >
                               <option value="pending">保留中</option>
@@ -639,12 +802,65 @@ export default function App() {
                               <option value="cancelled">キャンセル</option>
                             </select>
                           </span>
+                          <span style={{position: 'relative', zIndex: 100}}>
+                            <button 
+                              className="detail-btn"
+                              onClick={(e) => {
+                                console.log("Detail button clicked for order:", order.id);
+                                e.preventDefault();
+                                e.stopPropagation();
+                                showOrderDetails(order);
+                              }}
+                              title="詳細を表示"
+                            >
+                              📋 詳細
+                            </button>
+                          </span>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
+                )
               )}
+
+                {adminTab === 'files' && (
+                  <div className="files-list">
+                    <div className="files-header">
+                      <h3>アップロードファイル一覧 ({files.length}件)</h3>
+                      <button 
+                        className="refresh-btn"
+                        onClick={fetchFiles}
+                      >
+                        更新
+                      </button>
+                    </div>
+                    {loadingFiles ? (
+                      <div className="loading">読み込み中...</div>
+                    ) : files.length === 0 ? (
+                      <p>アップロードされたファイルはありません</p>
+                    ) : (
+                      <div className="files-table">
+                        <div className="table-header">
+                          <span>注文ID</span>
+                          <span>ファイル名</span>
+                          <span>サイズ</span>
+                          <span>アップロード日時</span>
+                          <span>種類</span>
+                        </div>
+                        {files.map((file) => (
+                          <div key={file.id} className="table-row">
+                            <span>{file.orderId}</span>
+                            <span title={file.originalName}>{file.originalName}</span>
+                            <span>{file.size}</span>
+                            <span>{file.uploadDate ? new Date(file.uploadDate).toLocaleString('ja-JP') : 'N/A'}</span>
+                            <span>{file.type}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
             </div>
             <div className="admin-modal-footer">
               <small>🔐 セキュアアクセス | ショートカット: {navigator.platform.includes('Mac') ? '⌘+Shift+K' : 'Ctrl+Shift+Alt+M'}</small>
@@ -652,6 +868,159 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 注文詳細モーダル - 管理モーダルとは独立して最上位に配置 */}
+      {showOrderDetail && selectedOrder && (
+        <div 
+          className="modal-overlay" 
+          style={{
+            zIndex: 3000, 
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center'
+          }} 
+          onClick={closeOrderDetail}
+        >
+          <div 
+            className="modal-content order-detail-modal" 
+            style={{
+              position: 'relative',
+              zIndex: 3001,
+              backgroundColor: 'white',
+              borderRadius: '8px',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              width: '90vw',
+              maxWidth: '800px',
+              padding: '20px'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2>注文詳細 - #{selectedOrder.id}</h2>
+              <button 
+                className="close-btn"
+                onClick={closeOrderDetail}
+                style={{
+                  position: 'absolute',
+                  top: '10px',
+                  right: '10px',
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div className="order-detail-content">
+              <div className="detail-grid">
+                <div className="detail-section">
+                  <h3>📦 注文情報</h3>
+                  <div className="detail-row">
+                    <span className="detail-label">注文ID:</span>
+                    <span className="detail-value">{selectedOrder.id}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">商品:</span>
+                    <span className="detail-value">{PRODUCTS.find(p => p.id === selectedOrder.product)?.name || selectedOrder.product}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">数量:</span>
+                    <span className="detail-value">{selectedOrder.quantity}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">ステータス:</span>
+                    <span className="detail-value status-badge">
+                      {selectedOrder.status === 'pending' && '⏳ 保留中'}
+                      {selectedOrder.status === 'processing' && '🔄 処理中'}
+                      {selectedOrder.status === 'shipped' && '🚚 発送済み'}
+                      {selectedOrder.status === 'delivered' && '✅ 配達完了'}
+                      {selectedOrder.status === 'cancelled' && '❌ キャンセル'}
+                    </span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">注文日時:</span>
+                    <span className="detail-value">{selectedOrder.created_at ? new Date(selectedOrder.created_at).toLocaleString('ja-JP') : 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">更新日時:</span>
+                    <span className="detail-value">{selectedOrder.updated_at ? new Date(selectedOrder.updated_at).toLocaleString('ja-JP') : 'N/A'}</span>
+                  </div>
+                </div>
+                
+                <div className="detail-section">
+                  <h3>👤 お客様情報</h3>
+                  <div className="detail-row">
+                    <span className="detail-label">氏名:</span>
+                    <span className="detail-value">{selectedOrder.full_name || 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">医院・クリニック名:</span>
+                    <span className="detail-value">{selectedOrder.company_name || 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">医院電話番号:</span>
+                    <span className="detail-value">{selectedOrder.company_phone || 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">医院住所:</span>
+                    <span className="detail-value">{selectedOrder.company_address || 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">自宅住所:</span>
+                    <span className="detail-value">{selectedOrder.home_address || 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">自宅電話番号:</span>
+                    <span className="detail-value">{selectedOrder.home_phone || 'N/A'}</span>
+                  </div>
+                </div>
+                
+                <div className="detail-section">
+                  <h3>📞 連絡者情報</h3>
+                  <div className="detail-row">
+                    <span className="detail-label">連絡者氏名:</span>
+                    <span className="detail-value">{selectedOrder.contact_name || 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">連絡先電話番号:</span>
+                    <span className="detail-value">{selectedOrder.contact_phone || 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">連絡先Email:</span>
+                    <span className="detail-value">{selectedOrder.contact_email || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer" style={{padding: '16px', textAlign: 'center', marginTop: '20px'}}>
+              <button 
+                className="btn btn-secondary"
+                onClick={closeOrderDetail}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

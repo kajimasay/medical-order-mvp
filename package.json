@@ -29,5 +29,8 @@
   },
   "engines": {
     "node": "24.x"
+  },
+  "dependencies": {
+    "resend": "^6.6.0"
   }
 }
