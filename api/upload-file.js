@@ -138,6 +138,8 @@ export default async function handler(req, res) {
     addFileToGlobal(fileRecord);
     
     console.log("File uploaded and saved to global storage:", fileId);
+    console.log("Current global storage count:", global.globalFilesStorage ? global.globalFilesStorage.length : 0);
+    console.log("All file IDs in storage:", global.globalFilesStorage ? global.globalFilesStorage.map(f => f.id) : []);
     
     return res.status(200).json({ 
       success: true,

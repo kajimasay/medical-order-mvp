@@ -538,6 +538,10 @@ export default function App() {
             const uploadData = await uploadRes.json();
             console.log("File uploaded successfully:", uploadData);
             console.log("=== FILE UPLOAD SUCCESS ===");
+            
+            // ファイルアップロード成功後にファイルリストを更新
+            console.log("Refreshing files list after upload...");
+            await fetchFiles();
           } else {
             const errorText = await uploadRes.text();
             console.error("Failed to upload file - Status:", uploadRes.status);

@@ -132,9 +132,13 @@ function initializeFiles() {
   return global.globalFilesStorage;
 }
 
-// Get current files
+// Get current files (including uploaded ones)
 function getFiles() {
-  return initializeFiles();
+  // Make sure to get the latest from global storage
+  const initialized = initializeFiles();
+  console.log('Getting files from global storage, count:', initialized.length);
+  console.log('File IDs:', initialized.map(f => f.id));
+  return initialized;
 }
 
 // Add new file
@@ -170,12 +174,24 @@ export default async function handler(req, res) {
       // List all uploaded files
       const { orderId } = req.query;
       
-      let files = [...uploadedFiles];
+      console.log('=== FILES API GET REQUEST ===');
+      console.log('Requested orderId:', orderId);
+      console.log('Global storage exists:', global.globalFilesStorage ? 'YES' : 'NO');
+      console.log('Global storage count:', global.globalFilesStorage ? global.globalFilesStorage.length : 0);
+      
+      // Get fresh files list
+      const allFiles = getFiles();
+      let files = [...allFiles];
+      
+      console.log('All files in storage:', files.map(f => ({ id: f.id, orderId: f.orderId, name: f.originalName })));
       
       // Filter by order ID if specified
       if (orderId) {
         files = files.filter(file => file.orderId == orderId);
+        console.log('Filtered files for order', orderId, ':', files.map(f => ({ id: f.id, name: f.originalName })));
       }
+      
+      console.log('Returning files count:', files.length);
       
       return res.status(200).json({
         success: true,
