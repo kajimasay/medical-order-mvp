@@ -4,11 +4,20 @@ import fs from 'fs';
 import path from 'path';
 
 // Global file storage (shared across instances within same deployment)
-global.globalFilesStorage = global.globalFilesStorage || [];
+global.globalFilesStorage = global.globalFilesStorage || null;
+
+// Initialize global storage if needed
+function initializeGlobalStorage() {
+  if (global.globalFilesStorage === null || global.globalFilesStorage === undefined) {
+    global.globalFilesStorage = [];
+    console.log('Initialized empty global files storage');
+  }
+  return global.globalFilesStorage;
+}
 
 // Add file to global storage
 function addFileToGlobal(file) {
-  const files = global.globalFilesStorage;
+  const files = initializeGlobalStorage();
   // Check if file already exists
   const existingIndex = files.findIndex(f => f.id === file.id);
   if (existingIndex === -1) {
@@ -48,9 +57,22 @@ export default async function handler(req, res) {
       allowEmptyFiles: false
     });
 
-    const [fields, files] = await form.parse(req);
-    console.log('Parsed fields:', fields);
-    console.log('Parsed files:', files);
+    let fields, files;
+    try {
+      [fields, files] = await form.parse(req);
+      console.log('=== FILE UPLOAD PARSING ===');
+      console.log('Parsed fields:', fields);
+      console.log('Parsed files:', Object.keys(files));
+      console.log('Files detail:', files);
+    } catch (parseError) {
+      console.error('Form parsing error:', parseError);
+      return res.status(400).json({
+        success: false,
+        error: 'Form parsing failed',
+        message: 'ファイルの解析に失敗しました',
+        details: parseError.message
+      });
+    }
 
     // Get the uploaded file
     const uploadedFile = files.file && files.file[0];
@@ -79,13 +101,27 @@ export default async function handler(req, res) {
     }
 
     // Read file content
-    const fileBuffer = fs.readFileSync(uploadedFile.filepath);
-    const base64Content = fileBuffer.toString('base64');
+    let fileBuffer, base64Content;
+    try {
+      console.log('Reading file from:', uploadedFile.filepath);
+      fileBuffer = fs.readFileSync(uploadedFile.filepath);
+      base64Content = fileBuffer.toString('base64');
+      console.log('File content length:', base64Content.length);
+    } catch (readError) {
+      console.error('File reading error:', readError);
+      return res.status(500).json({
+        success: false,
+        error: 'File reading failed',
+        message: 'ファイルの読み込みに失敗しました'
+      });
+    }
     
     // Generate file metadata
     const fileId = `file_${Date.now()}`;
     const originalName = uploadedFile.originalFilename || `uploaded_${Date.now()}.pdf`;
     const orderId = fields.orderId ? parseInt(fields.orderId[0]) : null;
+    
+    console.log('Generated file metadata:', { fileId, originalName, orderId });
     
     const fileRecord = {
       id: fileId,

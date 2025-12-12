@@ -6,7 +6,7 @@ global.globalFilesStorage = global.globalFilesStorage || null;
 
 // Initialize shared files (same as files.js)
 function initializeSharedFiles() {
-  if (global.globalFilesStorage === null) {
+  if (global.globalFilesStorage === null || global.globalFilesStorage === undefined) {
     global.globalFilesStorage = [
       {
         id: "file_1734057600000",

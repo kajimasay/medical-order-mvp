@@ -513,27 +513,46 @@ export default function App() {
       // 注文作成成功後、実際のファイルをアップロード
       if (licenseFile && data.order && data.order.id) {
         try {
+          console.log("=== FILE UPLOAD START ===");
           console.log("Uploading file for order:", data.order.id);
+          console.log("File info:", {
+            name: licenseFile.name,
+            size: licenseFile.size,
+            type: licenseFile.type
+          });
           
           // FormDataを使用してファイルをアップロード
           const formData = new FormData();
           formData.append('file', licenseFile);
           formData.append('orderId', data.order.id.toString());
           
+          console.log("Sending upload request to:", `${API_BASE}/api/upload-file`);
           const uploadRes = await fetch(`${API_BASE}/api/upload-file`, {
             method: 'POST',
             body: formData // Content-Typeヘッダーは自動で設定される
           });
           
+          console.log("Upload response status:", uploadRes.status);
+          
           if (uploadRes.ok) {
             const uploadData = await uploadRes.json();
             console.log("File uploaded successfully:", uploadData);
+            console.log("=== FILE UPLOAD SUCCESS ===");
           } else {
-            const errorData = await uploadRes.json();
-            console.warn("Failed to upload file:", errorData);
+            const errorText = await uploadRes.text();
+            console.error("Failed to upload file - Status:", uploadRes.status);
+            console.error("Error response:", errorText);
+            try {
+              const errorData = JSON.parse(errorText);
+              console.error("Parsed error data:", errorData);
+            } catch (e) {
+              console.error("Could not parse error response as JSON");
+            }
           }
         } catch (fileError) {
-          console.warn("Error uploading file:", fileError);
+          console.error("=== FILE UPLOAD ERROR ===");
+          console.error("Error uploading file:", fileError);
+          console.error("Error details:", fileError.message, fileError.stack);
           // ファイルアップロードエラーは注文の成功を妨げない
         }
       }
