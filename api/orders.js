@@ -136,6 +136,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ 
         ok: true, 
         orderId: newOrderId,
+        order: newOrder,
         message: "注文を受け付けました"
       });
     } catch (error) {

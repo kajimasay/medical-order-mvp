@@ -233,6 +233,9 @@ export default function App() {
     
     if (!showAdminModal) {
       await fetchOrders();
+      if (adminTab === 'files') {
+        await fetchFiles();
+      }
     }
     setShowAdminModal(!showAdminModal);
   };
@@ -429,6 +432,35 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "送信に失敗しました");
       
+      // 注文作成成功後、ファイル情報をファイル管理システムに登録
+      if (licenseFile && data.order && data.order.id) {
+        try {
+          console.log("Registering file for order:", data.order.id);
+          const fileRes = await fetch(`${API_BASE}/api/files`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              orderId: data.order.id,
+              filename: licenseFile.name,
+              originalName: licenseFile.name,
+              size: `${(licenseFile.size / 1024 / 1024).toFixed(1)}MB`,
+              type: licenseFile.type
+            })
+          });
+          
+          if (fileRes.ok) {
+            console.log("File information registered successfully");
+          } else {
+            console.warn("Failed to register file information:", fileRes.status);
+          }
+        } catch (fileError) {
+          console.warn("Error registering file information:", fileError);
+          // ファイル登録エラーは注文の成功を妨げない
+        }
+      }
+      
       // 成功時は成功モーダルを表示
       setOrderResult(data);
       setShowSuccessModal(true);
@@ -437,6 +469,10 @@ export default function App() {
       if (showAdminModal && adminAuthenticated) {
         console.log("Refreshing admin orders after new submission");
         await fetchOrders();
+        // ファイルタブも更新
+        if (adminTab === 'files') {
+          await fetchFiles();
+        }
       }
       
       // 送信成功後、ファイルと同意のみリセット
