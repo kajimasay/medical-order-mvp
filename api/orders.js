@@ -1,31 +1,13 @@
-import fs from 'fs';
-import path from 'path';
+// In-memory data storage for Vercel serverless functions
+// Note: In production, use external database (MongoDB, Supabase, etc.)
 
-// Data persistence functions
-const DATA_DIR = '/tmp/cvg-data'; // Vercel /tmp directory for temporary storage
-const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
+// Global in-memory storage (persists during function lifecycle)
+let ordersStorage = null;
 
-// Ensure data directory exists
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-// Load orders from file
-function loadOrders() {
-  ensureDataDir();
-  try {
-    if (fs.existsSync(ORDERS_FILE)) {
-      const data = fs.readFileSync(ORDERS_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error loading orders:', error);
-  }
-  
-  // Return default mock data if file doesn't exist or has errors
-  return [
+// Initialize orders data
+function initializeOrders() {
+  if (ordersStorage === null) {
+    ordersStorage = [
     {
       id: 1001,
       product: "eye-booster",
@@ -51,24 +33,38 @@ function loadOrders() {
       status: "processing",
       created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
       updated_at: new Date().toISOString()
-    }
-  ];
-}
-
-// Save orders to file
-function saveOrders(orders) {
-  ensureDataDir();
-  try {
-    fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2), 'utf8');
-    return true;
-  } catch (error) {
-    console.error('Error saving orders:', error);
-    return false;
+    }];
+    console.log('Orders initialized with', ordersStorage.length, 'items');
   }
+  return ordersStorage;
 }
 
-// Load orders at startup
-let mockOrders = loadOrders();
+// Get current orders
+function getOrders() {
+  return initializeOrders();
+}
+
+// Add new order
+function addOrder(order) {
+  const orders = getOrders();
+  orders.unshift(order);
+  console.log('Order added, total orders:', orders.length);
+  return orders;
+}
+
+// Update order
+function updateOrder(orderId, updates) {
+  const orders = getOrders();
+  const index = orders.findIndex(o => o.id == orderId);
+  if (index !== -1) {
+    orders[index] = { ...orders[index], ...updates };
+    return orders[index];
+  }
+  return null;
+}
+
+// Initialize orders at module load
+let mockOrders = getOrders();
 
 export default async function handler(req, res) {
   try {
@@ -121,13 +117,9 @@ export default async function handler(req, res) {
       };
     
       // Add new order to the beginning of the array (most recent first)
-      mockOrders.unshift(newOrder);
-      
-      // Save to persistent storage
-      const saved = saveOrders(mockOrders);
+      mockOrders = addOrder(newOrder);
       console.log("New order added:", newOrder);
       console.log("Total orders now:", mockOrders.length);
-      console.log("Data saved to disk:", saved);
       
       // メール通知を送信（非同期で実行、失敗してもレスポンスをブロックしない）
       try {
@@ -192,14 +184,18 @@ export default async function handler(req, res) {
         });
       }
       
-      // Update the order status
-      mockOrders[orderIndex].status = status;
-      mockOrders[orderIndex].updated_at = new Date().toISOString();
+      // Update the order status using memory-based function
+      const updatedOrder = updateOrder(orderId, {
+        status: status,
+        updated_at: new Date().toISOString()
+      });
       
-      // Save to persistent storage
-      const saved = saveOrders(mockOrders);
-      console.log(`Successfully updated order ${orderId} to ${status}`);
-      console.log("Order status update saved to disk:", saved);
+      if (updatedOrder) {
+        console.log(`Successfully updated order ${orderId} to ${status}`);
+        mockOrders = getOrders(); // Refresh local reference
+      } else {
+        console.error(`Failed to find order ${orderId} for update`);
+      }
       
       return res.status(200).json({ 
         success: true,

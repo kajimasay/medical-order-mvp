@@ -1,22 +1,95 @@
-// File download endpoint
-import fs from 'fs';
-import path from 'path';
+// File download endpoint - memory-based version
+// Import files data from files.js (shared memory)
 
-const DATA_DIR = '/tmp/cvg-data';
-const FILES_DATA_FILE = path.join(DATA_DIR, 'files.json');
-const FILES_STORAGE_DIR = path.join(DATA_DIR, 'uploads');
+// This is a simple approach - in production, use shared database
+let sharedFilesStorage = null;
 
-// Load files data
-function loadFiles() {
-  try {
-    if (fs.existsSync(FILES_DATA_FILE)) {
-      const data = fs.readFileSync(FILES_DATA_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error loading files data:', error);
+// Initialize shared files (same as files.js)
+function initializeSharedFiles() {
+  if (sharedFilesStorage === null) {
+    sharedFilesStorage = [
+      {
+        id: "file_1734057600000",
+        orderId: 1001,
+        filename: "license_tanaka.pdf", 
+        originalName: "医師免許証_田中太郎.pdf",
+        uploadDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        size: "2.1MB",
+        type: "application/pdf",
+        content: generateDemoPDF("医師免許証_田中太郎.pdf", 1001).toString('base64')
+      },
+      {
+        id: "file_1734057700000", 
+        orderId: 1002,
+        filename: "license_sato.pdf",
+        originalName: "医師免許証_佐藤花子.pdf", 
+        uploadDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        size: "1.8MB",
+        type: "application/pdf",
+        content: generateDemoPDF("医師免許証_佐藤花子.pdf", 1002).toString('base64')
+      }
+    ];
   }
-  return [];
+  return sharedFilesStorage;
+}
+
+// Generate demo PDF content
+function generateDemoPDF(originalName, orderId) {
+  return Buffer.from(`%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count 1
+>>
+endobj
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 612 792]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 120
+>>
+stream
+BT
+/F1 16 Tf
+50 700 Td
+(医師免許証 - ${originalName || 'Demo File'}) Tj
+0 -30 Td
+(注文ID: ${orderId}) Tj
+0 -30 Td
+(作成日時: ${new Date().toLocaleString('ja-JP')}) Tj
+0 -30 Td
+(※ これはデモ用のファイルです) Tj
+ET
+endstream
+endobj
+xref
+0 5
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000201 00000 n 
+trailer
+<<
+/Size 5
+/Root 1 0 R
+>>
+startxref
+350
+%%EOF`);
 }
 
 export default async function handler(req, res) {
@@ -44,12 +117,12 @@ export default async function handler(req, res) {
     }
 
     // Find file metadata
-    const files = loadFiles();
-    console.log('Available files:', files);
+    const files = initializeSharedFiles();
+    console.log('Available files:', files.map(f => ({ id: f.id, name: f.originalName })));
     console.log('Searching for fileId:', fileId);
     
     const fileRecord = files.find(f => f.id === fileId);
-    console.log('Found file record:', fileRecord);
+    console.log('Found file record:', fileRecord ? 'YES' : 'NO');
     
     if (!fileRecord) {
       console.log('File not found in records. Available file IDs:', files.map(f => f.id));
@@ -61,86 +134,20 @@ export default async function handler(req, res) {
       });
     }
 
-    // For demo purposes, return file metadata with mock download URL
-    // In production, this would return the actual file content or a signed URL
-    const filePath = path.join(FILES_STORAGE_DIR, fileRecord.filename);
-    console.log('Looking for file at path:', filePath);
-    console.log('FILES_STORAGE_DIR exists:', fs.existsSync(FILES_STORAGE_DIR));
+    // Return file content from memory
+    let fileContent;
     
-    // Check if physical file exists (for demo, we'll simulate)
-    const fileExists = fs.existsSync(filePath);
-    console.log('File exists:', fileExists);
-    
-    if (!fileExists) {
-      // For demo purposes, create a mock PDF response
-      console.log('File does not exist, creating mock PDF');
-      
-      // Ensure directory exists
-      if (!fs.existsSync(FILES_STORAGE_DIR)) {
-        fs.mkdirSync(FILES_STORAGE_DIR, { recursive: true });
-        console.log('Created FILES_STORAGE_DIR:', FILES_STORAGE_DIR);
-      }
-      
-      const mockPdfContent = Buffer.from(`%PDF-1.4
-1 0 obj
-<<
-/Type /Catalog
-/Pages 2 0 R
->>
-endobj
-2 0 obj
-<<
-/Type /Pages
-/Kids [3 0 R]
-/Count 1
->>
-endobj
-3 0 obj
-<<
-/Type /Page
-/Parent 2 0 R
-/MediaBox [0 0 612 792]
-/Contents 4 0 R
->>
-endobj
-4 0 obj
-<<
-/Length 44
->>
-stream
-BT
-/F1 24 Tf
-100 700 Td
-(Demo File: ${fileRecord.originalName}) Tj
-ET
-endstream
-endobj
-xref
-0 5
-0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000201 00000 n 
-trailer
-<<
-/Size 5
-/Root 1 0 R
->>
-startxref
-294
-%%EOF`);
-
-      res.setHeader('Content-Type', fileRecord.type || 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${fileRecord.originalName}"`);
-      res.setHeader('Content-Length', mockPdfContent.length);
-      
-      return res.status(200).send(mockPdfContent);
+    if (fileRecord.content) {
+      // File content stored in base64
+      fileContent = Buffer.from(fileRecord.content, 'base64');
+    } else {
+      // Generate demo PDF on the fly
+      fileContent = generateDemoPDF(fileRecord.originalName, fileRecord.orderId);
     }
-
-    // If file exists, serve it
-    const fileContent = fs.readFileSync(filePath);
-    res.setHeader('Content-Type', fileRecord.type || 'application/octet-stream');
+    
+    console.log('Serving file:', fileRecord.originalName, 'Size:', fileContent.length);
+    
+    res.setHeader('Content-Type', fileRecord.type || 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${fileRecord.originalName}"`);
     res.setHeader('Content-Length', fileContent.length);
     
