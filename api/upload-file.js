@@ -1,36 +1,12 @@
-// File upload endpoint for license documents with image PDF support
-import formidable from 'formidable';
-import fs from 'fs';
-import path from 'path';
-
-// Global file storage (shared across instances within same deployment)
-global.globalFilesStorage = global.globalFilesStorage || null;
-
-// Initialize global storage if needed
-function initializeGlobalStorage() {
-  if (global.globalFilesStorage === null || global.globalFilesStorage === undefined) {
-    global.globalFilesStorage = [];
-    console.log('Initialized empty global files storage');
-  }
-  return global.globalFilesStorage;
-}
-
-// Add file to global storage
-function addFileToGlobal(file) {
-  const files = initializeGlobalStorage();
-  // Check if file already exists
-  const existingIndex = files.findIndex(f => f.id === file.id);
-  if (existingIndex === -1) {
-    files.unshift(file);
-    console.log('Added uploaded file to global storage:', file.id);
-  } else {
-    files[existingIndex] = file; // Update existing
-    console.log('Updated uploaded file in global storage:', file.id);
-  }
-  return files;
-}
+// File upload with Vercel Blob storage
+import { put } from '@vercel/blob';
+import { addGlobalFile } from '../lib/shared-storage.js';
 
 export default async function handler(req, res) {
+  console.log('=== BASE64 UPLOAD API ===');
+  console.log('Method:', req.method);
+  console.log('Content-Type:', req.headers['content-type']);
+  
   try {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -45,148 +21,155 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    console.log("File upload request received");
-    console.log("Headers:", req.headers);
-    console.log("Content-Type:", req.headers['content-type']);
+    console.log('=== PROCESSING JSON UPLOAD ===');
     
-    // Parse multipart form data
-    const form = formidable({
-      maxFiles: 1,
-      maxFileSize: 10 * 1024 * 1024, // 10MB
-      keepExtensions: true,
-      allowEmptyFiles: false
-    });
-
-    let fields, files;
-    try {
-      [fields, files] = await form.parse(req);
-      console.log('=== FILE UPLOAD PARSING ===');
-      console.log('Parsed fields:', fields);
-      console.log('Parsed files:', Object.keys(files));
-      console.log('Files detail:', files);
-    } catch (parseError) {
-      console.error('Form parsing error:', parseError);
-      return res.status(400).json({
-        success: false,
-        error: 'Form parsing failed',
-        message: 'ファイルの解析に失敗しました',
-        details: parseError.message
-      });
-    }
-
-    // Get the uploaded file
-    const uploadedFile = files.file && files.file[0];
-    if (!uploadedFile) {
-      return res.status(400).json({
-        success: false,
-        error: 'No file uploaded',
-        message: 'ファイルが選択されていません'
-      });
-    }
-
-    console.log('Uploaded file info:', {
-      originalFilename: uploadedFile.originalFilename,
-      mimetype: uploadedFile.mimetype,
-      size: uploadedFile.size,
-      filepath: uploadedFile.filepath
-    });
-
-    // Validate file type (PDF only) - more flexible validation
-    const fileName = uploadedFile.originalFilename || '';
-    const mimeType = uploadedFile.mimetype || '';
-    const isValidPDF = 
-      mimeType.includes('pdf') || 
-      mimeType.includes('application/pdf') ||
-      fileName.toLowerCase().endsWith('.pdf') ||
-      mimeType === 'application/octet-stream'; // Sometimes PDFs are sent as octet-stream
+    // Parse JSON body
+    const { orderId, filename, originalName, size, type, content } = req.body;
     
-    console.log('File validation:', {
-      fileName,
-      mimeType,
-      isValidPDF,
-      endsWithPdf: fileName.toLowerCase().endsWith('.pdf')
+    console.log('Received upload data:', {
+      orderId,
+      filename,
+      size,
+      type,
+      contentLength: content ? content.length : 0
     });
-
-    if (!isValidPDF) {
+    
+    if (!content || !filename || !orderId) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid file type',
-        message: `PDFファイルのみアップロード可能です。受信したファイル: ${fileName} (${mimeType})`
-      });
-    }
-
-    // Read file content
-    let fileBuffer, base64Content;
-    try {
-      console.log('Reading file from:', uploadedFile.filepath);
-      fileBuffer = fs.readFileSync(uploadedFile.filepath);
-      base64Content = fileBuffer.toString('base64');
-      console.log('File content length:', base64Content.length);
-    } catch (readError) {
-      console.error('File reading error:', readError);
-      return res.status(500).json({
-        success: false,
-        error: 'File reading failed',
-        message: 'ファイルの読み込みに失敗しました'
+        error: 'Missing required fields',
+        message: '必要なデータが不足しています（orderId, filename, content）'
       });
     }
     
     // Generate file metadata
     const fileId = `file_${Date.now()}`;
-    const originalName = uploadedFile.originalFilename || `uploaded_${Date.now()}.pdf`;
-    const orderId = fields.orderId ? parseInt(fields.orderId[0]) : null;
+    const timestamp = new Date().toISOString();
     
-    console.log('Generated file metadata:', { fileId, originalName, orderId });
+    // Convert base64 back to binary buffer
+    const fileBuffer = Buffer.from(content, 'base64');
+    console.log('File buffer created, size:', fileBuffer.length, 'bytes');
     
+    // Validate file buffer
+    if (fileBuffer.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid file content',
+        message: 'ファイル内容が無効です'
+      });
+    }
+    
+    // Store file record with base64 content (safer for JSON serialization)
     const fileRecord = {
       id: fileId,
-      orderId: orderId,
-      filename: `uploaded_${Date.now()}.pdf`,
-      originalName: originalName,
-      uploadDate: new Date().toISOString(),
-      size: `${(uploadedFile.size / 1024 / 1024).toFixed(1)}MB`,
-      type: uploadedFile.mimetype,
-      content: base64Content // Store actual file content
+      orderId: parseInt(orderId),
+      filename: originalName || filename,
+      originalName: originalName || filename,
+      uploadDate: timestamp,
+      size: `${(fileBuffer.length / 1024 / 1024).toFixed(1)}MB`,
+      type: type || 'application/pdf',
+      content: content, // Store as base64 string to avoid Buffer serialization issues
+      contentSize: fileBuffer.length,
+      encoding: 'base64' // Indicate this is base64 encoded data
     };
-
-    // Add to global storage directly (more reliable in Vercel)
-    addFileToGlobal(fileRecord);
     
-    console.log("=== FILE STORAGE DEBUG ===");
-    console.log("File uploaded and saved to global storage:", fileId);
-    console.log("Current global storage count:", global.globalFilesStorage ? global.globalFilesStorage.length : 0);
-    console.log("All file IDs in storage:", global.globalFilesStorage ? global.globalFilesStorage.map(f => f.id) : []);
-    console.log("Uploaded file details:", {
+    console.log('=== SAVING FILE TO VERCEL BLOB ===');
+    console.log('File record:', {
       id: fileRecord.id,
       orderId: fileRecord.orderId,
-      originalName: fileRecord.originalName,
-      hasContent: !!fileRecord.content,
-      contentLength: fileRecord.content ? fileRecord.content.length : 0
+      filename: fileRecord.filename,
+      size: fileRecord.size,
+      contentSize: fileRecord.contentSize
     });
-    console.log("=== END FILE STORAGE DEBUG ===");
+    
+    try {
+      // Save to Vercel Blob for persistent storage
+      const blobResult = await put(`files/${fileId}.pdf`, fileBuffer, {
+        access: 'public',
+        contentType: type || 'application/pdf'
+      });
+      
+      console.log('File saved to Vercel Blob:', blobResult.url);
+      
+      // Save metadata to Blob as JSON
+      const metadataRecord = {
+        ...fileRecord,
+        blobUrl: blobResult.url,
+        storage: 'blob'
+      };
+      delete metadataRecord.content; // Remove base64 content since file is now in Blob
+      
+      const metadataBlob = await put(`metadata/${fileId}.json`, JSON.stringify(metadataRecord), {
+        access: 'public',
+        contentType: 'application/json'
+      });
+      
+      console.log('Metadata saved to Vercel Blob:', metadataBlob.url);
+      
+      // Also keep in memory for immediate access (fallback)
+      addGlobalFile(fileRecord);
+      
+    } catch (blobError) {
+      console.error('Blob storage failed, using fallback:', blobError);
+      // Fallback to memory storage
+      addGlobalFile(fileRecord);
+    }
+    
+    console.log('=== FILE SAVED SUCCESSFULLY ===');
+    console.log('Global storage length:', global.fileStorage ? global.fileStorage.length : 0);
+    console.log('Process PID:', process.pid);
+    
+    // Verify the file was actually saved
+    if (global.fileStorage) {
+      const savedFile = global.fileStorage.find(f => f.id === fileId);
+      console.log('Verification - File found in storage:', !!savedFile);
+      if (savedFile) {
+        console.log('Verification - Saved file details:', {
+          id: savedFile.id,
+          orderId: savedFile.orderId,
+          filename: savedFile.filename,
+          contentSize: savedFile.contentSize,
+          hasContent: !!savedFile.content,
+          contentType: typeof savedFile.content,
+          contentLength: savedFile.content ? savedFile.content.length : 0,
+          encoding: savedFile.encoding,
+          allKeys: Object.keys(savedFile)
+        });
+      }
+    }
     
     return res.status(200).json({ 
       success: true,
       message: "ファイルを受け付けました",
       fileId: fileId,
-      filename: originalName,
+      uploadDate: timestamp,
+      filename: fileRecord.filename,
+      orderId: fileRecord.orderId,
       size: fileRecord.size,
-      note: "画像PDFファイルが正常にアップロードされました"
+      debug: {
+        contentSize: fileRecord.contentSize,
+        storageLength: global.fileStorage ? global.fileStorage.length : 0
+      }
     });
 
   } catch (error) {
-    console.error("File upload error:", error);
+    console.error("Upload error:", error);
+    console.error("Error stack:", error.stack);
+    
     return res.status(500).json({
       success: false,
       error: "Internal server error",
-      message: "ファイルアップロード中にエラーが発生しました"
+      message: "ファイルアップロード中にエラーが発生しました",
+      details: error.message
     });
   }
 }
 
-// Vercel specific configuration for file uploads
+// Configure to parse JSON body
 export const config = {
   api: {
-    bodyParser: false, // Disable body parser to handle multipart/form-data with formidable
+    bodyParser: {
+      sizeLimit: '10mb', // Increase limit for base64 encoded files
+    },
   },
 }

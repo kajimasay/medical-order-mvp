@@ -1,72 +1,30 @@
-// In-memory data storage for Vercel serverless functions
-// Note: In production, use external database (MongoDB, Supabase, etc.)
+// Vercel Blob対応版 - フォールバック付き
+import { saveOrder, getOrders, updateOrder } from '../lib/kv-database.js';
 
-// Global in-memory storage (persists during function lifecycle)
-let ordersStorage = null;
-
-// Initialize orders data
-function initializeOrders() {
-  if (ordersStorage === null) {
-    ordersStorage = [
-    {
-      id: 1001,
-      product: "eye-booster",
-      quantity: 2,
-      full_name: "田中 太郎",
-      company_name: "田中眼科クリニック",
-      contact_name: "田中 太郎",
-      contact_phone: "03-1234-5678",
-      contact_email: "tanaka@example.com",
-      status: "pending",
-      created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: new Date().toISOString()
-    },
-    {
-      id: 1002,
-      product: "exosome-kit",
-      quantity: 1,
-      full_name: "佐藤 花子",
-      company_name: "佐藤総合病院",
-      contact_name: "佐藤 花子",
-      contact_phone: "03-2345-6789",
-      contact_email: "sato@hospital.com",
-      status: "processing",
-      created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: new Date().toISOString()
-    }];
-    console.log('Orders initialized with', ordersStorage.length, 'items');
+// フォールバック用メモリストレージ
+let fallbackOrders = [
+  {
+    id: 1001,
+    product: "eye-booster",
+    quantity: 2,
+    full_name: "テスト 太郎",
+    company_name: "テスト病院",
+    contact_name: "テスト 太郎",
+    contact_phone: "03-1234-5678",
+    contact_email: "test@example.com",
+    status: "pending",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
   }
-  return ordersStorage;
-}
+];
 
-// Get current orders
-function getOrders() {
-  return initializeOrders();
-}
-
-// Add new order
-function addOrder(order) {
-  const orders = getOrders();
-  orders.unshift(order);
-  console.log('Order added, total orders:', orders.length);
-  return orders;
-}
-
-// Update order
-function updateOrder(orderId, updates) {
-  const orders = getOrders();
-  const index = orders.findIndex(o => o.id == orderId);
-  if (index !== -1) {
-    orders[index] = { ...orders[index], ...updates };
-    return orders[index];
-  }
-  return null;
-}
-
-// Initialize orders at module load
-let mockOrders = getOrders();
+let useBlobStorage = true;
 
 export default async function handler(req, res) {
+  console.log('=== SIMPLE ORDERS API ===');
+  console.log('Method:', req.method);
+  console.log('Body:', req.body);
+  
   try {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -78,149 +36,171 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      // Return current mock orders with updated statuses
-      return res.status(200).json([...mockOrders]);
+      let orders;
+      
+      if (useBlobStorage) {
+        try {
+          console.log('Attempting to get orders from Blob...');
+          orders = await getOrders();
+          console.log('GET request from Blob, returning orders:', orders.length);
+        } catch (blobError) {
+          console.error('Blob storage error, falling back to memory:', blobError);
+          orders = fallbackOrders;
+          useBlobStorage = false;
+        }
+      } else {
+        orders = fallbackOrders;
+        console.log('GET request from fallback memory, returning orders:', orders.length);
+      }
+      
+      return res.status(200).json({
+        success: true,
+        orders: orders,
+        count: orders.length
+      });
     }
 
-  if (req.method === 'POST') {
-    try {
-      console.log("Order POST request received");
-      console.log("Request body:", req.body);
+    if (req.method === 'POST') {
+      console.log('POST request received');
       
-      // Extract form data from request body
       const formData = req.body || {};
+      console.log('Form data:', formData);
       
-      // Safe way to create new order ID
-      let newOrderId = 1;
-      if (mockOrders && mockOrders.length > 0) {
-        const existingIds = mockOrders.map(o => o.id || 0);
-        newOrderId = Math.max(...existingIds, 0) + 1;
-      }
-      
-      // Create new order from actual form data with safe defaults
-      const newOrder = {
-        id: newOrderId,
+      const orderData = {
         product: formData.product || "eye-booster",
-        quantity: Math.max(parseInt(formData.quantity) || 1, 1),
-        full_name: (formData.full_name || "").toString(),
-        company_name: (formData.company_name || "").toString(),
-        company_phone: (formData.company_phone || "").toString(),
-        company_address: (formData.company_address || "").toString(),
-        home_address: (formData.home_address || "").toString(),
-        home_phone: (formData.home_phone || "").toString(),
-        contact_name: (formData.contact_name || "").toString(),
-        contact_phone: (formData.contact_phone || "").toString(),
-        contact_email: (formData.contact_email || "").toString(),
-        status: "pending",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        quantity: parseInt(formData.quantity) || 1,
+        full_name: formData.full_name || "",
+        company_name: formData.company_name || "",
+        company_phone: formData.company_phone || "",
+        company_address: formData.company_address || "",
+        home_address: formData.home_address || "",
+        home_phone: formData.home_phone || "",
+        contact_name: formData.contact_name || "",
+        contact_phone: formData.contact_phone || "",
+        contact_email: formData.contact_email || "",
+        license_file: formData.license_file || null
       };
-    
-      // Add new order to the beginning of the array (most recent first)
-      mockOrders = addOrder(newOrder);
-      console.log("New order added:", newOrder);
-      console.log("Total orders now:", mockOrders.length);
       
-      // メール通知を送信（非同期で実行、失敗してもレスポンスをブロックしない）
-      try {
-        const notificationResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/send-notification`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            orderData: formData,
-            orderId: newOrderId
-          })
-        });
-        
-        if (notificationResponse.ok) {
-          console.log("Email notification sent successfully");
-        } else {
-          console.log("Email notification failed, but order was saved");
+      let newOrder;
+      
+      if (useBlobStorage) {
+        try {
+          console.log('Attempting to save order to Blob...');
+          newOrder = await saveOrder(orderData);
+          console.log('Order saved to Blob successfully:', newOrder.id);
+        } catch (blobError) {
+          console.error('Blob save error, falling back to memory:', blobError);
+          useBlobStorage = false;
+          
+          // フォールバックでメモリに保存
+          const newId = Math.max(...fallbackOrders.map(o => o.id), 0) + 1;
+          newOrder = {
+            id: newId,
+            ...orderData,
+            status: "pending",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          fallbackOrders.unshift(newOrder);
         }
-      } catch (emailError) {
-        console.error("Email notification error:", emailError);
-        // メール送信失敗でも注文処理は成功として扱う
+      } else {
+        // メモリベース処理
+        const newId = Math.max(...fallbackOrders.map(o => o.id), 0) + 1;
+        newOrder = {
+          id: newId,
+          ...orderData,
+          status: "pending",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        fallbackOrders.unshift(newOrder);
+        console.log('Order saved to fallback memory:', newOrder.id);
       }
       
-      return res.status(200).json({ 
-        ok: true, 
-        orderId: newOrderId,
+      return res.status(200).json({
+        ok: true,
+        orderId: newOrder.id,
         order: newOrder,
         message: "注文を受け付けました"
       });
-    } catch (error) {
-      console.error("POST request error:", error);
-      return res.status(500).json({
-        ok: false,
-        error: "Internal server error",
-        message: "注文処理中にエラーが発生しました"
-      });
     }
-  }
 
-  if (req.method === 'PATCH') {
-    try {
-      // Handle order status updates with actual data modification
+    if (req.method === 'PATCH') {
       const { orderId, status } = req.body || {};
       
       if (!orderId || !status) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           success: false,
-          message: "orderId and status are required" 
+          message: "orderId and status are required"
         });
       }
       
-      console.log(`Order PATCH request: updating order ${orderId} to status ${status}`);
+      let updatedOrder;
       
-      // Find and update the order in mock data
-      const orderIndex = mockOrders.findIndex(order => order.id == orderId);
-      
-      if (orderIndex === -1) {
-        return res.status(404).json({ 
-          success: false,
-          message: `注文 ${orderId} が見つかりませんでした` 
-        });
-      }
-      
-      // Update the order status using memory-based function
-      const updatedOrder = updateOrder(orderId, {
-        status: status,
-        updated_at: new Date().toISOString()
-      });
-      
-      if (updatedOrder) {
-        console.log(`Successfully updated order ${orderId} to ${status}`);
-        mockOrders = getOrders(); // Refresh local reference
+      if (useBlobStorage) {
+        try {
+          console.log('Attempting to update order in Blob...');
+          updatedOrder = await updateOrder(orderId, { status });
+          console.log('Order updated in Blob successfully:', orderId);
+        } catch (blobError) {
+          console.error('Blob update error, falling back to memory:', blobError);
+          useBlobStorage = false;
+          
+          // フォールバックでメモリから更新
+          const orderIndex = fallbackOrders.findIndex(order => order.id == orderId);
+          if (orderIndex === -1) {
+            return res.status(404).json({
+              success: false,
+              message: `注文 ${orderId} が見つかりませんでした`
+            });
+          }
+          
+          fallbackOrders[orderIndex] = {
+            ...fallbackOrders[orderIndex],
+            status: status,
+            updated_at: new Date().toISOString()
+          };
+          updatedOrder = fallbackOrders[orderIndex];
+        }
       } else {
-        console.error(`Failed to find order ${orderId} for update`);
+        // メモリベース処理
+        const orderIndex = fallbackOrders.findIndex(order => order.id == orderId);
+        if (orderIndex === -1) {
+          return res.status(404).json({
+            success: false,
+            message: `注文 ${orderId} が見つかりませんでした`
+          });
+        }
+        
+        fallbackOrders[orderIndex] = {
+          ...fallbackOrders[orderIndex],
+          status: status,
+          updated_at: new Date().toISOString()
+        };
+        updatedOrder = fallbackOrders[orderIndex];
+        console.log('Order updated in fallback memory:', orderId);
       }
       
-      return res.status(200).json({ 
+      return res.status(200).json({
         success: true,
         orderId: orderId,
         newStatus: status,
-        updatedOrder: mockOrders[orderIndex],
-        message: `注文 ${orderId} のステータスを ${status} に更新しました` 
-      });
-    } catch (error) {
-      console.error("PATCH request error:", error);
-      return res.status(500).json({
-        success: false,
-        error: "Internal server error",
-        message: "ステータス更新中にエラーが発生しました"
+        updatedOrder: updatedOrder,
+        message: `注文 ${orderId} のステータスを ${status} に更新しました`
       });
     }
-  }
 
-  return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method not allowed' });
+    
   } catch (error) {
-    console.error("Handler error:", error);
+    console.error('Simple API error:', error);
+    console.error('Error stack:', error.stack);
+    
     return res.status(500).json({
       ok: false,
       error: "Internal server error",
-      message: "サーバー内部エラーが発生しました"
+      message: "サーバー内部エラーが発生しました",
+      details: error.message
     });
   }
 }

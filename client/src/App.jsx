@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from "react";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "";
+// API Base configuration - fallback to current domain for production
+const API_BASE = import.meta.env.VITE_API_BASE || 
+  (import.meta.env.MODE === 'production' ? '' : 'http://localhost:3000');
+console.log('API_BASE configuration:', API_BASE);
+console.log('Environment mode:', import.meta.env.MODE);
+console.log('Available env vars:', Object.keys(import.meta.env));
+
 const STORAGE_KEY = "order_site_customer_v1";
 
 const PRODUCTS = [
@@ -246,8 +252,18 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/api/orders`);
       if (res.ok) {
-        const ordersList = await res.json();
-        setOrders(ordersList);
+        const ordersData = await res.json();
+        console.log('Orders API response:', ordersData);
+        
+        // Handle both old array format and new object format
+        if (Array.isArray(ordersData)) {
+          setOrders(ordersData);
+        } else if (ordersData.orders && Array.isArray(ordersData.orders)) {
+          setOrders(ordersData.orders);
+        } else {
+          console.warn('Unexpected orders data format:', ordersData);
+          setOrders([]);
+        }
       } else {
         console.error('Failed to fetch orders:', res.status);
         setOrders([]);
@@ -323,11 +339,15 @@ export default function App() {
     }
   };
 
-  const showOrderDetails = (order) => {
+  const showOrderDetails = async (order) => {
     console.log("=== showOrderDetails called ===");
     console.log("Order object:", order);
     console.log("Current showOrderDetail state:", showOrderDetail);
     console.log("Current selectedOrder state:", selectedOrder);
+    
+    // Refresh files list to get latest uploads
+    console.log("Refreshing files list before showing order details...");
+    await fetchFiles();
     
     setSelectedOrder(order);
     setShowOrderDetail(true);
@@ -344,66 +364,195 @@ export default function App() {
   };
 
   const handleFileView = async (file) => {
-    console.log('=== FILE VIEW ATTEMPT ===');
-    console.log('File:', file);
-    console.log('API_BASE:', API_BASE);
+    console.log('=== FILE VIEW ATTEMPT (SessionStorage First) ===');
+    console.log('File object:', file);
+    console.log('File ID:', file.id);
+    console.log('File name:', file.originalName);
     
     try {
-      // First test if API is accessible
-      const testUrl = `${API_BASE}/api/test-api`;
-      console.log('Testing API connectivity:', testUrl);
+      // First try to get file content from sessionStorage
+      const fileStorageKey = `file_content_${file.id}`;
+      const storedContent = sessionStorage.getItem(fileStorageKey);
       
-      const testResponse = await fetch(testUrl);
-      console.log('Test API response:', testResponse.status);
+      if (storedContent) {
+        console.log('=== USING SESSIONSTORAGE CONTENT ===');
+        console.log('Found stored content, length:', storedContent.length);
+        
+        // Create blob from stored base64 and open in new window
+        const byteCharacters = atob(storedContent);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/pdf' });
+        
+        const blobUrl = URL.createObjectURL(blob);
+        console.log('Opening PDF from sessionStorage:', blobUrl);
+        
+        const newWindow = window.open(blobUrl, '_blank');
+        if (!newWindow) {
+          alert('ポップアップがブロックされました。ブラウザの設定を確認してください。');
+        } else {
+          // Clean up blob URL after a delay
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        }
+        return; // Success, no need to try API
+      }
       
-      if (!testResponse.ok) {
-        console.error('API test failed:', testResponse.status);
-        alert('APIサーバーに接続できません。しばらく待ってから再試行してください。');
+      console.log('=== NO SESSIONSTORAGE CONTENT, TRYING API ===');
+      // Fallback: Get file content directly from files API
+      const filesApiUrl = `${API_BASE}/api/files?fileId=${encodeURIComponent(file.id)}`;
+      console.log('Fetching file content from:', filesApiUrl);
+      
+      const response = await fetch(filesApiUrl);
+      console.log('Files API response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Files API error:', errorText);
+        alert(`ファイルの取得に失敗しました: ${response.status}\n${errorText}`);
         return;
       }
       
-      // Try to access the file
-      const fileUrl = `${API_BASE}/api/download-file?fileId=${file.id}`;
-      console.log('Opening file URL:', fileUrl);
+      const responseData = await response.json();
+      console.log('Files API response:', responseData);
+      console.log('Response success:', responseData.success);
+      console.log('Response file exists:', !!responseData.file);
       
-      const fileResponse = await fetch(fileUrl);
-      console.log('File response status:', fileResponse.status);
-      
-      if (!fileResponse.ok) {
-        const errorData = await fileResponse.text();
-        console.error('File access error:', errorData);
-        alert(`ファイルの取得に失敗しました: ${fileResponse.status}`);
-        return;
+      if (responseData.file) {
+        console.log('File structure:', {
+          id: responseData.file.id,
+          filename: responseData.file.filename,
+          orderId: responseData.file.orderId,
+          hasContent: !!responseData.file.content,
+          contentType: typeof responseData.file.content,
+          contentLength: responseData.file.content ? responseData.file.content.length : 0,
+          encoding: responseData.file.encoding
+        });
       }
       
-      // Open in new window
-      window.open(fileUrl, '_blank');
+      if (responseData.success && responseData.file && responseData.file.content) {
+        console.log('File content found, size:', responseData.file.contentSize || 'unknown');
+        
+        // Check if content is base64 string or buffer
+        let base64Content;
+        if (typeof responseData.file.content === 'string') {
+          base64Content = responseData.file.content;
+        } else if (responseData.file.content.type === 'Buffer' && responseData.file.content.data) {
+          // Convert Buffer back to base64
+          base64Content = btoa(String.fromCharCode(...responseData.file.content.data));
+        } else {
+          console.error('Unknown content format:', typeof responseData.file.content);
+          alert('ファイル形式が不正です');
+          return;
+        }
+        
+        console.log('Base64 content length:', base64Content.length);
+        
+        // Create blob from base64 and open in new window
+        const byteCharacters = atob(base64Content);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/pdf' });
+        
+        const blobUrl = URL.createObjectURL(blob);
+        console.log('Opening PDF blob URL:', blobUrl);
+        
+        const newWindow = window.open(blobUrl, '_blank');
+        if (!newWindow) {
+          alert('ポップアップがブロックされました。ブラウザの設定を確認してください。');
+        } else {
+          // Clean up blob URL after a delay
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        }
+      } else {
+        console.error('No file content found in response');
+        alert('ファイル内容が見つかりません');
+      }
+      
     } catch (error) {
       console.error('File view error:', error);
-      alert(`ファイル表示エラー: ${error.message}`);
+      console.error('Error stack:', error.stack);
+      alert(`ファイル表示エラー: ${error.message}\n\nデバッグ情報:\n- File ID: ${file.id}`);
     }
   };
 
   const handleFileDownload = async (file) => {
-    console.log('=== FILE DOWNLOAD ATTEMPT ===');
-    console.log('File:', file);
+    console.log('=== FILE DOWNLOAD ATTEMPT (SessionStorage First) ===');
+    console.log('File object:', file);
+    console.log('File ID:', file.id);
+    console.log('File name:', file.originalName);
     
     try {
+      // Debug sessionStorage contents
+      console.log('=== SESSIONSTORAGE DEBUG ===');
+      console.log('All sessionStorage keys:', Object.keys(sessionStorage));
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.includes('file_content')) {
+          console.log(`SessionStorage key: ${key}, content length:`, sessionStorage.getItem(key)?.length || 0);
+        }
+      }
+      
+      // First try to get file content from sessionStorage
+      const fileStorageKey = `file_content_${file.id}`;
+      console.log('Looking for key:', fileStorageKey);
+      const storedContent = sessionStorage.getItem(fileStorageKey);
+      console.log('Retrieved content from sessionStorage:', storedContent ? `Found (${storedContent.length} chars)` : 'Not found');
+      
+      if (storedContent) {
+        console.log('=== DOWNLOADING FROM SESSIONSTORAGE ===');
+        console.log('Found stored content, length:', storedContent.length);
+        
+        // Create blob from stored base64 for download
+        const byteCharacters = atob(storedContent);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/pdf' });
+        
+        console.log('Created blob from sessionStorage, size:', blob.size, 'type:', blob.type);
+        
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.originalName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        console.log('Download from sessionStorage completed successfully');
+        return; // Success, no need to try API
+      }
+      
+      console.log('=== NO SESSIONSTORAGE CONTENT, TRYING API DOWNLOAD ===');
+      // Fallback: Use API download
       const fileUrl = `${API_BASE}/api/download-file?fileId=${file.id}`;
       console.log('Download URL:', fileUrl);
       
       const response = await fetch(fileUrl);
       console.log('Download response status:', response.status);
+      console.log('Download response headers:', Object.fromEntries(response.headers.entries()));
       
       if (!response.ok) {
         const errorData = await response.text();
-        console.error('Download error:', errorData);
-        alert(`ファイルのダウンロードに失敗しました: ${response.status}`);
+        console.error('Download error details:', errorData);
+        alert(`ファイルのダウンロードに失敗しました: ${response.status}\n${errorData}`);
         return;
       }
       
-      // Create download link
+      // Create download link from API response
       const blob = await response.blob();
+      console.log('Created blob from API, size:', blob.size, 'type:', blob.type);
+      
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -413,10 +562,11 @@ export default function App() {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
-      console.log('Download completed successfully');
+      console.log('Download from API completed successfully');
     } catch (error) {
       console.error('Download error:', error);
-      alert(`ダウンロードエラー: ${error.message}`);
+      console.error('Error stack:', error.stack);
+      alert(`ダウンロードエラー: ${error.message}\n\nデバッグ情報:\n- File ID: ${file.id}\n- API Base: ${API_BASE}`);
     }
   };
 
@@ -532,15 +682,48 @@ export default function App() {
             type: licenseFile.type
           });
           
-          // FormDataを使用してファイルをアップロード
-          const formData = new FormData();
-          formData.append('file', licenseFile);
-          formData.append('orderId', data.order.id.toString());
+          // Convert file to base64 for reliable transmission
+          console.log("Converting file to base64...");
+          console.log("Original file size:", licenseFile.size, "bytes");
+          const base64Content = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result;
+              console.log("FileReader result type:", typeof result);
+              console.log("FileReader result length:", result ? result.length : 0);
+              console.log("FileReader result preview:", result ? result.substring(0, 100) : 'No result');
+              
+              const base64String = result.split(',')[1]; // Remove data:mime prefix
+              console.log("Base64 string length after split:", base64String ? base64String.length : 0);
+              resolve(base64String);
+            };
+            reader.onerror = (error) => {
+              console.error("FileReader error:", error);
+              reject(error);
+            };
+            reader.readAsDataURL(licenseFile);
+          });
+          
+          console.log("Base64 conversion complete, final size:", base64Content.length);
+          console.log("Base64 preview:", base64Content.substring(0, 100));
+          
+          // Send as JSON with base64 content
+          const uploadPayload = {
+            orderId: data.order.id,
+            filename: licenseFile.name,
+            originalName: licenseFile.name,
+            size: licenseFile.size,
+            type: licenseFile.type,
+            content: base64Content
+          };
           
           console.log("Sending upload request to:", `${API_BASE}/api/upload-file`);
           const uploadRes = await fetch(`${API_BASE}/api/upload-file`, {
             method: 'POST',
-            body: formData // Content-Typeヘッダーは自動で設定される
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(uploadPayload)
           });
           
           console.log("Upload response status:", uploadRes.status);
@@ -549,6 +732,49 @@ export default function App() {
             const uploadData = await uploadRes.json();
             console.log("File uploaded successfully:", uploadData);
             console.log("=== FILE UPLOAD SUCCESS ===");
+            
+            // Store file content in sessionStorage for reliable access
+            console.log("=== STORING FILE IN SESSION STORAGE ===");
+            const fileStorageKey = `file_content_${uploadData.fileId}`;
+            try {
+              sessionStorage.setItem(fileStorageKey, base64Content);
+              console.log("File content stored in sessionStorage with key:", fileStorageKey);
+              console.log("SessionStorage content length:", base64Content.length);
+            } catch (storageError) {
+              console.error("Failed to store in sessionStorage:", storageError);
+            }
+            
+            // ファイル情報をfiles APIに直接登録（Vercelの関数間での確実な共有のため）
+            try {
+              console.log("=== REGISTERING FILE TO FILES API ===");
+              const fileRegistration = {
+                fileId: uploadData.fileId,
+                orderId: uploadData.orderId || data.order.id,
+                filename: uploadData.filename,
+                originalName: uploadData.filename,
+                size: `${(licenseFile.size / 1024 / 1024).toFixed(1)}MB`,
+                type: licenseFile.type || 'application/pdf'
+              };
+              
+              console.log("Registering file:", fileRegistration);
+              
+              const filesRes = await fetch(`${API_BASE}/api/files`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(fileRegistration)
+              });
+              
+              if (filesRes.ok) {
+                const filesData = await filesRes.json();
+                console.log("File registered to files API:", filesData);
+              } else {
+                console.error("Failed to register file to files API:", filesRes.status);
+              }
+            } catch (regError) {
+              console.error("File registration error:", regError);
+            }
             
             // ファイルアップロード成功後にファイルリストを更新
             console.log("Refreshing files list after upload...");
@@ -1267,6 +1493,62 @@ export default function App() {
                     <span className="detail-label">連絡先Email:</span>
                     <span className="detail-value">{selectedOrder.contact_email || 'N/A'}</span>
                   </div>
+                </div>
+
+                <div className="detail-section">
+                  <h3>📎 添付ファイル</h3>
+                  {files.filter(f => f.orderId === selectedOrder.id).length > 0 ? (
+                    <div className="detail-row">
+                      <span className="detail-label">アップロード済み:</span>
+                      <span className="detail-value">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {files.filter(f => f.orderId === selectedOrder.id).map((file, index) => (
+                            <div key={file.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ color: '#10b981' }}>
+                                📄 {file.originalName} ({file.size})
+                              </span>
+                              <button 
+                                className="detail-btn"
+                                onClick={() => handleFileView(file)}
+                                style={{ 
+                                  fontSize: '12px', 
+                                  padding: '2px 8px',
+                                  backgroundColor: '#3b82f6',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                表示
+                              </button>
+                              <button 
+                                className="detail-btn"
+                                onClick={() => handleFileDownload(file)}
+                                style={{ 
+                                  fontSize: '12px', 
+                                  padding: '2px 8px',
+                                  backgroundColor: '#10b981',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                DL
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="detail-row">
+                      <span className="detail-value" style={{ color: '#6b7280' }}>
+                        添付ファイルなし
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

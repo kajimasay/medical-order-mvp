@@ -1,158 +1,112 @@
-// File download endpoint - memory-based version
-// Import files data from files.js (shared memory)
+// File download endpoint with Vercel Blob support
+import { list } from '@vercel/blob';
+import { getGlobalFiles, getGlobalFileById } from '../lib/shared-storage.js';
 
-// Global file storage (shared across instances within same deployment)
-global.globalFilesStorage = global.globalFilesStorage || null;
-
-// Initialize shared files (same as files.js)
-function initializeSharedFiles() {
-  if (global.globalFilesStorage === null || global.globalFilesStorage === undefined) {
-    global.globalFilesStorage = [
-      {
-        id: "file_1734057600000",
-        orderId: 1001,
-        filename: "license_tanaka.pdf", 
-        originalName: "医師免許証_田中太郎.pdf",
-        uploadDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        size: "2.1MB",
-        type: "application/pdf",
-        content: generateDemoPDF("医師免許証_田中太郎.pdf", 1001).toString('base64')
-      },
-      {
-        id: "file_1734057700000", 
-        orderId: 1002,
-        filename: "license_sato.pdf",
-        originalName: "医師免許証_佐藤花子.pdf", 
-        uploadDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        size: "1.8MB",
-        type: "application/pdf",
-        content: generateDemoPDF("医師免許証_佐藤花子.pdf", 1002).toString('base64')
-      }
-    ];
-    console.log('Files storage initialized in download-file.js');
-  }
-  return global.globalFilesStorage;
-}
-
-// Add file to global storage
-function addFileToGlobal(file) {
-  const files = initializeSharedFiles();
-  // Check if file already exists
-  const existingIndex = files.findIndex(f => f.id === file.id);
-  if (existingIndex === -1) {
-    files.unshift(file);
-    console.log('Added file to global storage:', file.id);
-  } else {
-    console.log('File already exists in global storage:', file.id);
-  }
-  return files;
-}
-
-// Generate medical license PDF content with proper Japanese content
-function generateDemoPDF(originalName, orderId) {
-  const fileName = originalName || 'Demo File';
-  const orderIdStr = orderId ? orderId.toString() : '0000';
+// Generate medical license PDF with proper Japanese text handling
+function generateMedicalLicensePDF(fileRecord) {
+  const fileName = fileRecord.originalName || fileRecord.filename || 'Medical License';
+  const orderIdStr = fileRecord.orderId ? fileRecord.orderId.toString() : '0000';
   const currentDate = new Date().toLocaleDateString('ja-JP');
+  const uploadDate = fileRecord.uploadDate ? new Date(fileRecord.uploadDate).toLocaleDateString('ja-JP') : currentDate;
   
-  // Extract doctor name from filename
-  let doctorName = 'Tanaka Taro';
-  if (fileName.includes('田中太郎')) {
-    doctorName = 'Tanaka Taro';
-  } else if (fileName.includes('佐藤花子')) {
-    doctorName = 'Sato Hanako';  
-  } else if (fileName.includes('田中')) {
-    doctorName = 'Tanaka';
+  // Extract doctor name from filename (romanized to avoid PDF encoding issues)
+  let doctorName = 'Medical Professional';
+  if (fileName.includes('田中')) {
+    doctorName = 'Dr. Tanaka';
   } else if (fileName.includes('佐藤')) {
-    doctorName = 'Sato';
+    doctorName = 'Dr. Sato';
+  } else if (fileName.includes('伊藤')) {
+    doctorName = 'Dr. Ito';
+  } else if (fileName.includes('加藤')) {
+    doctorName = 'Dr. Kato';
   }
   
-  // Generate license number
-  const licenseNumber = `第${String(Math.floor(Math.random() * 900000) + 100000)}号`;
-  const issueDate = new Date(Date.now() - Math.floor(Math.random() * 365 * 5) * 24 * 60 * 60 * 1000).toLocaleDateString('ja-JP');
+  // Generate license content
+  const licenseNumber = `License No. ${String(Math.floor(Math.random() * 900000) + 100000)}`;
   
-  const contentStream = `BT /F1 16 Tf 200 720 Td (MEDICAL LICENSE) Tj /F1 14 Tf 220 700 Td (Ishimen-kyosho) Tj /F1 12 Tf 50 650 Td (License No: ${licenseNumber}) Tj 0 -25 Td (Doctor Name: ${doctorName}) Tj 0 -25 Td (Specialty: Internal Medicine) Tj 0 -25 Td (Issue Date: ${issueDate}) Tj 0 -25 Td (Valid Until: 2030/12/31) Tj 0 -40 Td (Issued by: Ministry of Health, Labour and Welfare) Tj 0 -25 Td (Japan Medical Association) Tj 0 -40 Td (Document Details:) Tj 0 -20 Td (Order ID: ${orderIdStr}) Tj 0 -20 Td (File: ${fileName}) Tj 0 -20 Td (Generated: ${currentDate}) Tj 0 -40 Td (This medical license certifies that the above) Tj 0 -20 Td (named person is qualified to practice medicine) Tj 0 -20 Td (in accordance with Japanese medical law.) Tj ET`;
+  // Create PDF content with ASCII-safe text to avoid encoding issues
+  const contentLines = [
+    `MEDICAL LICENSE CERTIFICATE`,
+    ``,
+    `${licenseNumber}`,
+    `Doctor: ${doctorName}`,
+    ``,
+    `Original Document: ${fileName}`,
+    `Order ID: ${orderIdStr}`,
+    `Upload Date: ${uploadDate}`,
+    `Generated: ${currentDate}`,
+    ``,
+    `Ministry of Health, Labour and Welfare`,
+    `Japan Medical Association`,
+    ``,
+    `This certifies that the above named`,
+    `person is qualified to practice medicine`,
+    `in accordance with Japanese medical law.`
+  ];
   
-  const streamLength = contentStream.length;
+  // Calculate content length
+  const contentText = contentLines.map((line, index) => {
+    const yPos = 750 - (index * 25);
+    return `50 ${yPos} Td (${line}) Tj 0 -25 Td`;
+  }).join(' ');
+  
+  const contentLength = contentText.length;
   
   const pdfContent = `%PDF-1.4
 1 0 obj
-<<
-/Type /Catalog
-/Pages 2 0 R
->>
+<< /Type /Catalog /Pages 2 0 R >>
 endobj
 2 0 obj
-<<
-/Type /Pages
-/Kids [3 0 R]
-/Count 1
->>
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
 endobj
 3 0 obj
-<<
-/Type /Page
-/Parent 2 0 R
-/Resources <<
-  /Font <<
-    /F1 <<
-      /Type /Font
-      /Subtype /Type1
-      /BaseFont /Helvetica-Bold
-    >>
-  >>
->>
-/MediaBox [0 0 612 792]
-/Contents 4 0 R
->>
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
 endobj
 4 0 obj
-<<
-/Length ${streamLength}
->>
+<< /Length ${contentLength} >>
 stream
-${contentStream}
+BT
+/F1 12 Tf
+${contentText}
+ET
 endstream
 endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
 xref
-0 5
+0 6
 0000000000 65535 f 
-0000000010 00000 n 
-0000000053 00000 n 
-0000000125 00000 n 
-0000000348 00000 n 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000278 00000 n 
+0000000${(340 + contentLength).toString().padStart(3, '0')} 00000 n 
 trailer
-<<
-/Size 5
-/Root 1 0 R
->>
+<< /Size 6 /Root 1 0 R >>
 startxref
-${420 + streamLength}
+${390 + contentLength}
 %%EOF`;
 
-  console.log('Generated medical license PDF content length:', pdfContent.length);
-  return Buffer.from(pdfContent, 'utf8');
+  return Buffer.from(pdfContent, 'ascii');
 }
 
 export default async function handler(req, res) {
-  console.log('=== DOWNLOAD FILE API CALLED ===');
+  console.log('=== SIMPLE DOWNLOAD API ===');
   console.log('Method:', req.method);
-  console.log('URL:', req.url);
   console.log('Query:', req.query);
-  console.log('Headers:', req.headers);
   
   try {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
     if (req.method === 'OPTIONS') {
-      console.log('OPTIONS request handled');
       return res.status(200).end();
     }
 
-    if (req.method !== 'GET') {
-      console.log('Invalid method:', req.method);
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
@@ -160,93 +114,160 @@ export default async function handler(req, res) {
     console.log('Requested fileId:', fileId);
     
     if (!fileId) {
-      console.log('No fileId provided');
       return res.status(400).json({
         success: false,
         error: 'File ID is required'
       });
     }
 
-    // Find file metadata
-    const files = initializeSharedFiles();
-    console.log('Total available files:', files.length);
-    console.log('Available files:', files.map(f => ({ id: f.id, name: f.originalName })));
-    console.log('Searching for fileId:', fileId);
+    // First try to get file directly from Vercel Blob
+    let fileRecord = null;
+    let fileBuffer = null;
     
-    let fileRecord = files.find(f => f.id === fileId);
-    console.log('Found file record:', fileRecord ? 'YES' : 'NO');
+    try {
+      console.log('Attempting to fetch from Vercel Blob...');
+      
+      // Check if file exists in Vercel Blob
+      const blobs = await list({ prefix: `files/${fileId}` });
+      
+      if (blobs.blobs.length > 0) {
+        console.log('File found in Vercel Blob:', blobs.blobs[0].url);
+        
+        // Fetch file content from Blob
+        const fileResponse = await fetch(blobs.blobs[0].url);
+        if (fileResponse.ok) {
+          fileBuffer = Buffer.from(await fileResponse.arrayBuffer());
+          console.log('File content loaded from Blob, size:', fileBuffer.length);
+          
+          // Try to get metadata
+          const metadataBlobs = await list({ prefix: `metadata/${fileId}` });
+          if (metadataBlobs.blobs.length > 0) {
+            const metadataResponse = await fetch(metadataBlobs.blobs[0].url);
+            if (metadataResponse.ok) {
+              fileRecord = await metadataResponse.json();
+              console.log('Metadata loaded from Blob:', fileRecord.originalName);
+            }
+          }
+          
+          // If no metadata, create basic record
+          if (!fileRecord) {
+            fileRecord = {
+              id: fileId,
+              originalName: `${fileId}.pdf`,
+              type: 'application/pdf'
+            };
+          }
+        }
+      }
+    } catch (blobError) {
+      console.log('Blob fetch failed, trying fallback storage:', blobError.message);
+    }
     
-    // If not found, try to create a dynamic demo file
-    if (!fileRecord && fileId.startsWith('file_')) {
-      console.log('File not found, creating dynamic demo file');
-      const timestamp = fileId.replace('file_', '');
-      const orderId = Math.floor(Math.random() * 9000) + 1000; // Random order ID
+    // Fallback to local storage if not found in Blob
+    if (!fileRecord) {
+      const allFiles = getGlobalFiles();
+      console.log('Local storage - Total files available:', allFiles.length);
+      console.log('Local storage - Available file IDs:', allFiles.map(f => f.id));
       
-      fileRecord = {
-        id: fileId,
-        orderId: orderId,
-        filename: `demo_${timestamp}.pdf`,
-        originalName: `デモ医師免許証_${timestamp}.pdf`,
-        uploadDate: new Date().toISOString(),
-        size: '1.5MB',
-        type: 'application/pdf',
-        content: generateDemoPDF(`Demo_${timestamp}.pdf`, orderId).toString('base64')
-      };
-      
-      // Add to global storage for future requests
-      addFileToGlobal(fileRecord);
-      console.log('Created and added dynamic demo file:', fileRecord.id);
+      fileRecord = getGlobalFileById(fileId);
+      console.log('Local storage - Found file record:', fileRecord ? 'YES' : 'NO');
+    }
+    
+    // If not found locally, try to fetch from files API (cross-function compatibility)
+    if (!fileRecord) {
+      console.log('File not found locally, trying files API...');
+      try {
+        // Make internal request to files API
+        const protocol = req.headers['x-forwarded-proto'] || 'https';
+        const host = req.headers.host;
+        const filesApiUrl = `${protocol}://${host}/api/files`;
+        
+        const specificFileUrl = `${filesApiUrl}?fileId=${encodeURIComponent(fileId)}`;
+        console.log('Fetching specific file from:', specificFileUrl);
+        const filesResponse = await fetch(specificFileUrl);
+        
+        if (filesResponse.ok) {
+          const filesData = await filesResponse.json();
+          console.log('Files API response:', filesData.success);
+          
+          if (filesData.success && filesData.file) {
+            fileRecord = filesData.file;
+            console.log('File found via API:', JSON.stringify({
+              id: fileRecord.id,
+              orderId: fileRecord.orderId,
+              originalName: fileRecord.originalName,
+              contentAvailable: !!fileRecord.content,
+              contentSize: fileRecord.contentSize || 'unknown'
+            }, null, 2));
+          }
+        } else {
+          console.log('Files API request failed:', filesResponse.status);
+          const errorText = await filesResponse.text();
+          console.log('API error response:', errorText);
+        }
+      } catch (apiError) {
+        console.error('Error fetching from files API:', apiError);
+      }
     }
     
     if (!fileRecord) {
-      console.log('File not found in records. Available file IDs:', files.map(f => f.id));
+      console.log('File not found in any storage, returning 404');
       return res.status(404).json({
         success: false,
         error: 'File not found',
-        availableFiles: files.map(f => ({ id: f.id, name: f.originalName })),
-        searchedId: fileId
+        message: 'ファイルが見つかりません',
+        requestedId: fileId,
+        localStorageIds: allFiles.map(f => f.id),
+        searchedInAPI: true
       });
     }
 
-    // Return file content from memory
-    let fileContent;
+    console.log('Serving file:', fileRecord.originalName);
     
-    if (fileRecord.content) {
-      // File content stored in base64 (actual uploaded file)
-      console.log('Using uploaded file content for:', fileRecord.originalName);
+    // Use fileBuffer from Blob if available, otherwise try other sources
+    let fileContent;
+    if (fileBuffer) {
+      console.log('Using file content from Vercel Blob, size:', fileBuffer.length);
+      fileContent = fileBuffer;
+    } else if (fileRecord.content && Buffer.isBuffer(fileRecord.content) && fileRecord.content.length > 0) {
+      console.log('Using actual uploaded file content (Buffer), size:', fileRecord.content.length);
+      fileContent = fileRecord.content;
+    } else if (fileRecord.content && typeof fileRecord.content === 'string') {
+      console.log('Converting base64 content to buffer, size:', fileRecord.content.length);
       fileContent = Buffer.from(fileRecord.content, 'base64');
     } else {
-      // Generate demo PDF on the fly (for demo files without actual content)
-      console.log('Generating demo PDF for:', fileRecord.originalName);
-      fileContent = generateDemoPDF(fileRecord.originalName, fileRecord.orderId);
+      console.log('No valid file content found, generating medical license PDF');
+      console.log('Content type:', typeof fileRecord.content);
+      console.log('Content available:', !!fileRecord.content);
+      fileContent = generateMedicalLicensePDF(fileRecord);
     }
     
-    console.log('Serving file:', fileRecord.originalName, 'Size:', fileContent.length);
-    
-    // Properly encode Japanese filename for Content-Disposition header
-    const encodedFileName = encodeURIComponent(fileRecord.originalName);
-    console.log('Original filename:', fileRecord.originalName);
-    console.log('Encoded filename:', encodedFileName);
-    
-    res.setHeader('Content-Type', fileRecord.type || 'application/pdf');
+    // Use original filename for better user experience
+    const encodedFileName = encodeURIComponent(fileRecord.originalName || `file_${fileRecord.orderId}.pdf`);
+    res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodedFileName}`);
     res.setHeader('Content-Length', fileContent.length);
+    
+    console.log('File headers set:');
+    console.log('- Content length:', fileContent.length);
+    console.log('- Original filename:', fileRecord.originalName);
+    console.log('- Content type: application/pdf');
+    
+    if (req.method === 'HEAD') {
+      return res.status(200).end();
+    }
     
     return res.status(200).send(fileContent);
 
   } catch (error) {
-    console.error('=== FILE DOWNLOAD ERROR ===');
-    console.error('Error details:', error);
+    console.error('Simple download error:', error);
     console.error('Error stack:', error.stack);
+    
     return res.status(500).json({
       success: false,
       error: 'Internal server error',
       message: 'ファイルダウンロード中にエラーが発生しました',
-      debug: {
-        errorMessage: error.message,
-        errorName: error.name,
-        timestamp: new Date().toISOString()
-      }
+      details: error.message
     });
   }
 }
