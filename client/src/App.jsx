@@ -981,14 +981,40 @@ export default function App() {
           </button>
         </div>
 
-        <button disabled={submitting} className="w-full sm:w-auto px-5 py-2 rounded bg-blue-600 text-white disabled:opacity-60">
-          注文内容を確認
+        <button disabled={submitting} className="w-full sm:w-auto px-5 py-2 rounded bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center min-w-[160px]">
+          {submitting ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              処理中...
+            </>
+          ) : "注文内容を確認"}
         </button>
       </form>
 
       <footer className="mt-8 text-xs text-gray-500">
         © Cell Vision Global Limited — Demo Form
       </footer>
+
+      {/* 送信中オーバーレイ */}
+      {submitting && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center">
+            <svg className="animate-spin h-8 w-8 text-blue-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p className="text-lg font-medium text-gray-900 mb-2">注文を送信しています...</p>
+            <p className="text-sm text-gray-500 text-center">
+              データベースへの保存、ファイルアップロード、<br />
+              メール通知の送信を行っています。<br />
+              しばらくお待ちください。
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 確認モーダル */}
       {showConfirmModal && (
@@ -1049,9 +1075,17 @@ export default function App() {
               <button 
                 onClick={handleConfirmSubmit}
                 disabled={submitting}
-                className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[140px]"
               >
-                {submitting ? "送信中..." : "確認して送信"}
+                {submitting ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    送信中...
+                  </>
+                ) : "確認して送信"}
               </button>
             </div>
           </div>
