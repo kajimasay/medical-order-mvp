@@ -669,13 +669,19 @@ export default function App() {
       }
       
       const data = await res.json();
+      console.log("Response received:", data);
+      
       if (!res.ok) throw new Error(data?.error || "送信に失敗しました");
       
+      // 注文IDを取得（APIレスポンス形式に対応）
+      const orderId = data.orderId || data.order?.id;
+      console.log("Order ID:", orderId);
+      
       // 注文作成成功後、実際のファイルをアップロード
-      if (licenseFile && data.order && data.order.id) {
+      if (licenseFile && orderId) {
         try {
           console.log("=== FILE UPLOAD START ===");
-          console.log("Uploading file for order:", data.order.id);
+          console.log("Uploading file for order:", orderId);
           console.log("File info:", {
             name: licenseFile.name,
             size: licenseFile.size,
@@ -709,7 +715,7 @@ export default function App() {
           
           // Send as JSON with base64 content
           const uploadPayload = {
-            orderId: data.order.id,
+            orderId: orderId,
             filename: licenseFile.name,
             originalName: licenseFile.name,
             size: licenseFile.size,
@@ -749,7 +755,7 @@ export default function App() {
               console.log("=== REGISTERING FILE TO FILES API ===");
               const fileRegistration = {
                 fileId: uploadData.fileId,
-                orderId: uploadData.orderId || data.order.id,
+                orderId: uploadData.orderId || orderId,
                 filename: uploadData.filename,
                 originalName: uploadData.filename,
                 size: `${(licenseFile.size / 1024 / 1024).toFixed(1)}MB`,
@@ -797,6 +803,48 @@ export default function App() {
           // ファイルアップロードエラーは注文の成功を妨げない
         }
       }
+      
+      // メール通知を送信
+      try {
+        console.log("=== EMAIL NOTIFICATION START ===");
+        const notificationPayload = {
+          orderData: {
+            product: form.product,
+            quantity: String(form.quantity),
+            full_name: form.full_name,
+            company_name: form.company_name,
+            company_phone: form.company_phone,
+            company_address: form.company_address,
+            home_address: form.home_address,
+            home_phone: form.home_phone,
+            contact_name: form.contact_name,
+            contact_phone: form.contact_phone,
+            contact_email: form.contact_email,
+            license_file: licenseFile ? licenseFile.name : null
+          },
+          orderId: orderId
+        };
+        
+        console.log("Sending Gmail notification for order:", orderId);
+        const notificationRes = await fetch(`${API_BASE}/api/gmail-notification`, {
+          method: "POST",
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(notificationPayload)
+        });
+        
+        if (notificationRes.ok) {
+          const notificationData = await notificationRes.json();
+          console.log("Email notification sent successfully:", notificationData.message);
+        } else {
+          console.error("Failed to send email notification:", notificationRes.status);
+        }
+      } catch (emailError) {
+        console.error("Email notification error:", emailError);
+        // メール送信エラーは注文の成功を妨げない
+      }
+      console.log("=== EMAIL NOTIFICATION END ===");
       
       // 成功時は成功モーダルを表示
       setOrderResult(data);

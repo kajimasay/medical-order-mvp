@@ -94,11 +94,22 @@
   </div>
 
   <script>
+    // グローバル変数で注文データを保存
+    let globalOrders = [];
+    
     // 注文データを取得して表示
     async function loadOrders() {
       try {
         const response = await fetch('/api/orders');
-        const orders = await response.json();
+        const data = await response.json();
+        
+        console.log('Orders API response:', data);
+        
+        // データの形式を確認して配列を取得
+        const orders = data.orders || data || [];
+        
+        // グローバル変数に保存
+        globalOrders = orders;
         
         // 統計を計算
         updateStatistics(orders);
@@ -112,6 +123,12 @@
 
     // 統計を更新
     function updateStatistics(orders) {
+      // 配列チェック
+      if (!Array.isArray(orders)) {
+        console.error('Orders is not an array:', orders);
+        orders = [];
+      }
+      
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -129,6 +146,12 @@
 
     // 注文テーブルを更新
     function updateOrdersTable(orders) {
+      // 配列チェック
+      if (!Array.isArray(orders)) {
+        console.error('Orders is not an array in updateOrdersTable:', orders);
+        orders = [];
+      }
+      
       const tbody = document.getElementById('ordersTableBody');
       tbody.innerHTML = '';
 
@@ -150,10 +173,15 @@
     }
 
     // 注文詳細を表示
-    async function showOrderDetails(orderId) {
+    function showOrderDetails(orderId) {
       try {
-        const response = await fetch(`/api/orders/${orderId}`);
-        const order = await response.json();
+        // グローバル変数から注文を検索
+        const order = globalOrders.find(o => o.id == orderId);
+        
+        if (!order) {
+          alert('注文データが見つかりません');
+          return;
+        }
         
         const detailsDiv = document.getElementById('orderDetails');
         detailsDiv.innerHTML = `
@@ -170,7 +198,7 @@
             <div><strong>連絡者:</strong> ${order.contact_name}</div>
             <div><strong>連絡先電話:</strong> ${order.contact_phone}</div>
             <div><strong>連絡先Email:</strong> ${order.contact_email}</div>
-            <div><strong>医師免許証:</strong> ${order.license_path}</div>
+            <div><strong>医師免許証:</strong> ${order.license_file || 'なし'}</div>
             <div><strong>注文日時:</strong> ${new Date(order.created_at).toLocaleString('ja-JP')}</div>
           </div>
         `;
@@ -179,6 +207,7 @@
         document.getElementById('orderModal').classList.add('flex');
       } catch (error) {
         console.error('Error loading order details:', error);
+        alert('詳細表示でエラーが発生しました');
       }
     }
 

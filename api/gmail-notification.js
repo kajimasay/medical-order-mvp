@@ -1,5 +1,5 @@
-// Email notification endpoint for order submissions
-import { Resend } from 'resend';
+// Gmail SMTP email sender
+import nodemailer from 'nodemailer';
 
 export default async function handler(req, res) {
   try {
@@ -16,21 +16,33 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { orderData, orderId } = req.body;
-
-    // メール送信の実装（Resend を使用）
-    // 環境変数からAPI Keyを取得
-    const resendApiKey = process.env.RESEND_API_KEY;
+    console.log('=== GMAIL SMTP EMAIL API ===');
     
-    if (!resendApiKey) {
-      console.log("No email API key configured, skipping email");
-      return res.status(200).json({ 
-        success: true,
-        message: "注文を受け付けました（メール通知は無効）"
+    // Gmail SMTP設定を確認
+    const gmailUser = process.env.GMAIL_USER;
+    const gmailAppPassword = process.env.GMAIL_APP_PASSWORD;
+    
+    console.log('Gmail User:', gmailUser);
+    console.log('Gmail App Password exists:', !!gmailAppPassword);
+    
+    if (!gmailUser || !gmailAppPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Gmail SMTP not configured',
+        details: 'GMAIL_USER or GMAIL_APP_PASSWORD environment variables missing'
       });
     }
 
-    const resend = new Resend(resendApiKey);
+    const { orderData, orderId } = req.body;
+
+    // Gmail SMTP transporter作成
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: gmailUser,
+        pass: gmailAppPassword
+      }
+    });
 
     // 管理者向けメール
     const adminEmailContent = `
@@ -82,48 +94,67 @@ CVG Cell Vision Global Limited
     `;
 
     try {
+      const emailResults = [];
+      
       // 管理者向けメール送信
       if (process.env.ADMIN_EMAIL) {
-        await resend.emails.send({
-          from: 'onboarding@resend.dev', // Resendの認証済みデフォルトドメイン使用
+        console.log('Sending admin email...');
+        const adminResult = await transporter.sendMail({
+          from: `"CVG Order System" <${gmailUser}>`,
           to: process.env.ADMIN_EMAIL,
           subject: `[CVG] 新規注文 #${orderId} - ${orderData.full_name}様`,
-          text: adminEmailContent,
+          text: adminEmailContent
         });
+        
+        emailResults.push({
+          type: 'admin',
+          messageId: adminResult.messageId,
+          to: process.env.ADMIN_EMAIL
+        });
+        console.log('Admin email sent:', adminResult.messageId);
       }
 
-      // 顧客向け確認メール送信（メールアドレスがある場合）
+      // 顧客向け確認メール送信
       if (orderData.contact_email) {
-        await resend.emails.send({
-          from: 'onboarding@resend.dev', // Resendの認証済みデフォルトドメイン使用
+        console.log('Sending customer email...');
+        const customerResult = await transporter.sendMail({
+          from: `"CVG Order System" <${gmailUser}>`,
           to: orderData.contact_email,
           subject: `[CVG] ご注文確認 #${orderId}`,
-          text: customerEmailContent,
+          text: customerEmailContent
         });
+        
+        emailResults.push({
+          type: 'customer', 
+          messageId: customerResult.messageId,
+          to: orderData.contact_email
+        });
+        console.log('Customer email sent:', customerResult.messageId);
       }
 
-      console.log("Email notifications sent successfully");
-      
-      return res.status(200).json({ 
+      return res.status(200).json({
         success: true,
-        message: "注文を受け付け、メール通知を送信しました"
+        message: 'Gmail SMTP emails sent successfully',
+        emailResults: emailResults
       });
 
     } catch (emailError) {
-      console.error("Email sending error:", emailError);
+      console.error('Gmail SMTP error:', emailError);
       
-      return res.status(200).json({ 
-        success: true,
-        message: "注文を受け付けましたが、メール送信でエラーが発生しました"
+      return res.status(500).json({
+        success: false,
+        error: 'Gmail SMTP sending failed',
+        details: emailError.message
       });
     }
 
   } catch (error) {
-    console.error("Notification handler error:", error);
+    console.error('Gmail SMTP API error:', error);
+    
     return res.status(500).json({
       success: false,
-      error: "Internal server error",
-      message: "通知送信中にエラーが発生しました"
+      error: 'Internal server error',
+      details: error.message
     });
   }
 }

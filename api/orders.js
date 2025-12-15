@@ -1,27 +1,17 @@
-// Vercel Blob対応版 - フォールバック付き
-import { saveOrder, getOrders, updateOrder } from '../lib/kv-database.js';
+// Upstash Redis対応版 - 安定したデータベース接続（フォールバック付き）
+import { Redis } from '@upstash/redis';
 
 // フォールバック用メモリストレージ
-let fallbackOrders = [
-  {
-    id: 1001,
-    product: "eye-booster",
-    quantity: 2,
-    full_name: "テスト 太郎",
-    company_name: "テスト病院",
-    contact_name: "テスト 太郎",
-    contact_phone: "03-1234-5678",
-    contact_email: "test@example.com",
-    status: "pending",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  }
-];
+let memoryOrders = [];
 
-let useBlobStorage = true;
+// Upstash Redis接続
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_KV_REST_API_URL,
+  token: process.env.UPSTASH_REDIS_KV_REST_API_TOKEN,
+});
 
 export default async function handler(req, res) {
-  console.log('=== SIMPLE ORDERS API ===');
+  console.log('=== UPSTASH REDIS ORDERS API ===');
   console.log('Method:', req.method);
   console.log('Body:', req.body);
   
@@ -36,32 +26,47 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      let orders;
+      console.log('=== GET ORDERS FROM UPSTASH REDIS ===');
       
-      if (useBlobStorage) {
-        try {
-          console.log('Attempting to get orders from Blob...');
-          orders = await getOrders();
-          console.log('GET request from Blob, returning orders:', orders.length);
-        } catch (blobError) {
-          console.error('Blob storage error, falling back to memory:', blobError);
-          orders = fallbackOrders;
-          useBlobStorage = false;
+      try {
+        // Upstash Redisから全ての注文を取得
+        const orderKeys = await redis.keys('order:*');
+        console.log('Order keys found:', orderKeys.length);
+        
+        const orders = [];
+        for (const key of orderKeys) {
+          const order = await redis.get(key);
+          if (order) {
+            orders.push(order);
+          }
         }
-      } else {
-        orders = fallbackOrders;
-        console.log('GET request from fallback memory, returning orders:', orders.length);
+        
+        // IDでソート（新しい順）
+        orders.sort((a, b) => b.id - a.id);
+        
+        console.log('Orders retrieved from Redis:', orders.length);
+        
+        return res.status(200).json({
+          success: true,
+          orders: orders,
+          count: orders.length,
+          source: 'upstash-redis'
+        });
+      } catch (redisError) {
+        console.error('Upstash Redis error, using memory fallback:', redisError);
+        
+        // Redisエラー時はメモリフォールバックを使用
+        return res.status(200).json({
+          success: true,
+          orders: memoryOrders,
+          count: memoryOrders.length,
+          source: 'memory-fallback'
+        });
       }
-      
-      return res.status(200).json({
-        success: true,
-        orders: orders,
-        count: orders.length
-      });
     }
 
     if (req.method === 'POST') {
-      console.log('POST request received');
+      console.log('=== POST ORDER TO UPSTASH REDIS ===');
       
       const formData = req.body || {};
       console.log('Form data:', formData);
@@ -81,48 +86,59 @@ export default async function handler(req, res) {
         license_file: formData.license_file || null
       };
       
-      let newOrder;
-      
-      if (useBlobStorage) {
-        try {
-          console.log('Attempting to save order to Blob...');
-          newOrder = await saveOrder(orderData);
-          console.log('Order saved to Blob successfully:', newOrder.id);
-        } catch (blobError) {
-          console.error('Blob save error, falling back to memory:', blobError);
-          useBlobStorage = false;
-          
-          // フォールバックでメモリに保存
-          const newId = Math.max(...fallbackOrders.map(o => o.id), 0) + 1;
-          newOrder = {
-            id: newId,
-            ...orderData,
-            status: "pending",
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          };
-          fallbackOrders.unshift(newOrder);
-        }
-      } else {
-        // メモリベース処理
-        const newId = Math.max(...fallbackOrders.map(o => o.id), 0) + 1;
-        newOrder = {
+      try {
+        // Generate new order ID
+        const currentIds = await redis.keys('order:*');
+        const ids = currentIds.map(key => {
+          const idStr = key.replace('order:', '');
+          return parseInt(idStr) || 0;
+        });
+        const newId = ids.length > 0 ? Math.max(...ids) + 1 : 1001;
+        
+        const newOrder = {
           id: newId,
           ...orderData,
           status: "pending",
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
-        fallbackOrders.unshift(newOrder);
-        console.log('Order saved to fallback memory:', newOrder.id);
+        
+        // Save to Upstash Redis
+        await redis.set(`order:${newId}`, newOrder);
+        console.log('Order saved to Upstash Redis:', newId);
+        
+        return res.status(200).json({
+          ok: true,
+          orderId: newId,
+          order: newOrder,
+          message: "注文を受け付けました",
+          source: "upstash-redis"
+        });
+      } catch (redisError) {
+        console.error('Upstash Redis save error, using memory fallback:', redisError);
+        
+        // フォールバックでメモリに保存
+        const memoryIds = memoryOrders.map(o => o.id);
+        const newId = memoryIds.length > 0 ? Math.max(...memoryIds) + 1 : 1001;
+        
+        const newOrder = {
+          id: newId,
+          ...orderData,
+          status: "pending",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        
+        memoryOrders.unshift(newOrder);
+        
+        return res.status(200).json({
+          ok: true,
+          orderId: newId,
+          order: newOrder,
+          message: "注文を受け付けました",
+          source: "memory-fallback"
+        });
       }
-      
-      return res.status(200).json({
-        ok: true,
-        orderId: newOrder.id,
-        order: newOrder,
-        message: "注文を受け付けました"
-      });
     }
 
     if (req.method === 'PATCH') {
@@ -135,65 +151,49 @@ export default async function handler(req, res) {
         });
       }
       
-      let updatedOrder;
-      
-      if (useBlobStorage) {
-        try {
-          console.log('Attempting to update order in Blob...');
-          updatedOrder = await updateOrder(orderId, { status });
-          console.log('Order updated in Blob successfully:', orderId);
-        } catch (blobError) {
-          console.error('Blob update error, falling back to memory:', blobError);
-          useBlobStorage = false;
-          
-          // フォールバックでメモリから更新
-          const orderIndex = fallbackOrders.findIndex(order => order.id == orderId);
-          if (orderIndex === -1) {
-            return res.status(404).json({
-              success: false,
-              message: `注文 ${orderId} が見つかりませんでした`
-            });
-          }
-          
-          fallbackOrders[orderIndex] = {
-            ...fallbackOrders[orderIndex],
-            status: status,
-            updated_at: new Date().toISOString()
-          };
-          updatedOrder = fallbackOrders[orderIndex];
-        }
-      } else {
-        // メモリベース処理
-        const orderIndex = fallbackOrders.findIndex(order => order.id == orderId);
-        if (orderIndex === -1) {
+      try {
+        // Get existing order
+        const existingOrder = await redis.get(`order:${orderId}`);
+        
+        if (!existingOrder) {
           return res.status(404).json({
             success: false,
             message: `注文 ${orderId} が見つかりませんでした`
           });
         }
         
-        fallbackOrders[orderIndex] = {
-          ...fallbackOrders[orderIndex],
+        // Update order
+        const updatedOrder = {
+          ...existingOrder,
           status: status,
           updated_at: new Date().toISOString()
         };
-        updatedOrder = fallbackOrders[orderIndex];
-        console.log('Order updated in fallback memory:', orderId);
+        
+        await redis.set(`order:${orderId}`, updatedOrder);
+        console.log('Order updated in Upstash Redis:', orderId);
+        
+        return res.status(200).json({
+          success: true,
+          orderId: orderId,
+          newStatus: status,
+          updatedOrder: updatedOrder,
+          message: `注文 ${orderId} のステータスを ${status} に更新しました`
+        });
+      } catch (kvError) {
+        console.error('Vercel KV update error:', kvError);
+        
+        return res.status(500).json({
+          success: false,
+          error: "Failed to update order",
+          details: kvError.message
+        });
       }
-      
-      return res.status(200).json({
-        success: true,
-        orderId: orderId,
-        newStatus: status,
-        updatedOrder: updatedOrder,
-        message: `注文 ${orderId} のステータスを ${status} に更新しました`
-      });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
     
   } catch (error) {
-    console.error('Simple API error:', error);
+    console.error('Orders API error:', error);
     console.error('Error stack:', error.stack);
     
     return res.status(500).json({
