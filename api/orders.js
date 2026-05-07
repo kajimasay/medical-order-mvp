@@ -1,19 +1,54 @@
-// Upstash Redis対応版 - 安定したデータベース接続（フォールバック付き）
-import { Redis } from '@upstash/redis';
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+import path from 'path';
 
-// フォールバック用メモリストレージ
-let memoryOrders = [];
+// グローバルDB接続（キャッシュ）
+let db = null;
 
-// Upstash Redis接続
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_KV_REST_API_URL,
-  token: process.env.UPSTASH_REDIS_KV_REST_API_TOKEN,
-});
+// DB接続を初期化
+async function initDB() {
+  if (db) return db;
+  
+  // Vercel環境では /tmp に保存、ローカルではプロジェクトディレクトリ
+  const dbPath = process.env.VERCEL ? 
+    path.join('/tmp', 'orders.db') : 
+    path.join(process.cwd(), 'orders.db');
+  
+  console.log('Database path:', dbPath);
+  
+  db = await open({
+    filename: dbPath,
+    driver: sqlite3.Database
+  });
+  
+  // テーブルを作成
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      full_name TEXT NOT NULL,
+      company_name TEXT,
+      company_phone TEXT,
+      company_address TEXT,
+      home_address TEXT,
+      home_phone TEXT,
+      contact_name TEXT NOT NULL,
+      contact_phone TEXT NOT NULL,
+      contact_email TEXT NOT NULL,
+      license_file TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  
+  return db;
+}
 
 export default async function handler(req, res) {
-  console.log('=== UPSTASH REDIS ORDERS API ===');
+  console.log('=== ORDERS API (SQLite) ===');
   console.log('Method:', req.method);
-  console.log('Body:', req.body);
   
   try {
     // CORS headers
@@ -25,167 +60,178 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
+    // DB初期化
+    const database = await initDB();
+
+    // ======== GET: 全注文を取得 ========
     if (req.method === 'GET') {
-      console.log('=== GET ORDERS FROM UPSTASH REDIS ===');
+      console.log('=== GET ORDERS ===');
       
       try {
-        // Upstash Redisから全ての注文を取得
-        const orderKeys = await redis.keys('order:*');
-        console.log('Order keys found:', orderKeys.length);
+        const orders = await database.all(
+          'SELECT * FROM orders ORDER BY created_at DESC'
+        );
         
-        const orders = [];
-        for (const key of orderKeys) {
-          const order = await redis.get(key);
-          if (order) {
-            orders.push(order);
-          }
-        }
-        
-        // IDでソート（新しい順）
-        orders.sort((a, b) => b.id - a.id);
-        
-        console.log('Orders retrieved from Redis:', orders.length);
+        console.log('Orders retrieved:', orders.length);
         
         return res.status(200).json({
           success: true,
           orders: orders,
           count: orders.length,
-          source: 'upstash-redis'
+          source: 'sqlite'
         });
-      } catch (redisError) {
-        console.error('Upstash Redis error, using memory fallback:', redisError);
-        
-        // Redisエラー時はメモリフォールバックを使用
-        return res.status(200).json({
-          success: true,
-          orders: memoryOrders,
-          count: memoryOrders.length,
-          source: 'memory-fallback'
-        });
-      }
-    }
-
-    if (req.method === 'POST') {
-      console.log('=== POST ORDER TO UPSTASH REDIS ===');
-      
-      const formData = req.body || {};
-      console.log('Form data:', formData);
-      
-      const orderData = {
-        product: formData.product || "eye-booster",
-        quantity: parseInt(formData.quantity) || 1,
-        full_name: formData.full_name || "",
-        company_name: formData.company_name || "",
-        company_phone: formData.company_phone || "",
-        company_address: formData.company_address || "",
-        home_address: formData.home_address || "",
-        home_phone: formData.home_phone || "",
-        contact_name: formData.contact_name || "",
-        contact_phone: formData.contact_phone || "",
-        contact_email: formData.contact_email || "",
-        license_file: formData.license_file || null
-      };
-      
-      try {
-        // Generate new order ID
-        const currentIds = await redis.keys('order:*');
-        const ids = currentIds.map(key => {
-          const idStr = key.replace('order:', '');
-          return parseInt(idStr) || 0;
-        });
-        const newId = ids.length > 0 ? Math.max(...ids) + 1 : 1001;
-        
-        const newOrder = {
-          id: newId,
-          ...orderData,
-          status: "pending",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        
-        // Save to Upstash Redis
-        await redis.set(`order:${newId}`, newOrder);
-        console.log('Order saved to Upstash Redis:', newId);
-        
-        return res.status(200).json({
-          ok: true,
-          orderId: newId,
-          order: newOrder,
-          message: "注文を受け付けました",
-          source: "upstash-redis"
-        });
-      } catch (redisError) {
-        console.error('Upstash Redis save error, using memory fallback:', redisError);
-        
-        // フォールバックでメモリに保存
-        const memoryIds = memoryOrders.map(o => o.id);
-        const newId = memoryIds.length > 0 ? Math.max(...memoryIds) + 1 : 1001;
-        
-        const newOrder = {
-          id: newId,
-          ...orderData,
-          status: "pending",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        
-        memoryOrders.unshift(newOrder);
-        
-        return res.status(200).json({
-          ok: true,
-          orderId: newId,
-          order: newOrder,
-          message: "注文を受け付けました",
-          source: "memory-fallback"
-        });
-      }
-    }
-
-    if (req.method === 'PATCH') {
-      const { orderId, status } = req.body || {};
-      
-      if (!orderId || !status) {
-        return res.status(400).json({
+      } catch (error) {
+        console.error('GET error:', error);
+        return res.status(500).json({
           success: false,
-          message: "orderId and status are required"
+          error: 'Failed to fetch orders',
+          details: error.message
         });
       }
+    }
+
+    // ======== POST: 新規注文を作成 ========
+    if (req.method === 'POST') {
+      console.log('=== POST ORDER ===');
+      console.log('Body:', req.body);
       
       try {
-        // Get existing order
-        const existingOrder = await redis.get(`order:${orderId}`);
-        
-        if (!existingOrder) {
-          return res.status(404).json({
+        const {
+          product,
+          quantity,
+          full_name,
+          company_name,
+          company_phone,
+          company_address,
+          home_address,
+          home_phone,
+          contact_name,
+          contact_phone,
+          contact_email,
+          license_file
+        } = req.body;
+
+        // バリデーション
+        if (!product || !quantity || !full_name || !contact_name || !contact_phone || !contact_email) {
+          return res.status(400).json({
             success: false,
-            message: `注文 ${orderId} が見つかりませんでした`
+            error: 'Missing required fields'
           });
         }
+
+        const now = new Date().toISOString();
         
-        // Update order
-        const updatedOrder = {
-          ...existingOrder,
-          status: status,
-          updated_at: new Date().toISOString()
+        const result = await database.run(
+          `INSERT INTO orders 
+           (product, quantity, full_name, company_name, company_phone, company_address, 
+            home_address, home_phone, contact_name, contact_phone, contact_email, 
+            license_file, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+          [
+            product,
+            parseInt(quantity),
+            full_name,
+            company_name || null,
+            company_phone || null,
+            company_address || null,
+            home_address || null,
+            home_phone || null,
+            contact_name,
+            contact_phone,
+            contact_email,
+            license_file || null,
+            now,
+            now
+          ]
+        );
+
+        const newOrder = {
+          id: result.lastID,
+          product,
+          quantity,
+          full_name,
+          company_name,
+          company_phone,
+          company_address,
+          home_address,
+          home_phone,
+          contact_name,
+          contact_phone,
+          contact_email,
+          license_file,
+          status: 'pending',
+          created_at: now,
+          updated_at: now
         };
-        
-        await redis.set(`order:${orderId}`, updatedOrder);
-        console.log('Order updated in Upstash Redis:', orderId);
-        
+
+        console.log('Order created with ID:', result.lastID);
+
+        return res.status(200).json({
+          ok: true,
+          orderId: result.lastID,
+          order: newOrder,
+          message: '注文を受け付けました',
+          source: 'sqlite'
+        });
+      } catch (error) {
+        console.error('POST error:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to create order',
+          details: error.message
+        });
+      }
+    }
+
+    // ======== PATCH: 注文ステータスを更新 ========
+    if (req.method === 'PATCH') {
+      console.log('=== PATCH ORDER ===');
+      
+      try {
+        const { orderId, status } = req.body;
+
+        if (!orderId || !status) {
+          return res.status(400).json({
+            success: false,
+            error: 'orderId and status are required'
+          });
+        }
+
+        const now = new Date().toISOString();
+
+        const result = await database.run(
+          'UPDATE orders SET status = ?, updated_at = ? WHERE id = ?',
+          [status, now, orderId]
+        );
+
+        if (result.changes === 0) {
+          return res.status(404).json({
+            success: false,
+            error: `Order ${orderId} not found`
+          });
+        }
+
+        const updatedOrder = await database.get(
+          'SELECT * FROM orders WHERE id = ?',
+          [orderId]
+        );
+
+        console.log('Order updated:', orderId);
+
         return res.status(200).json({
           success: true,
           orderId: orderId,
           newStatus: status,
           updatedOrder: updatedOrder,
-          message: `注文 ${orderId} のステータスを ${status} に更新しました`
+          message: `Order ${orderId} status updated to ${status}`,
+          source: 'sqlite'
         });
-      } catch (kvError) {
-        console.error('Vercel KV update error:', kvError);
-        
+      } catch (error) {
+        console.error('PATCH error:', error);
         return res.status(500).json({
           success: false,
-          error: "Failed to update order",
-          details: kvError.message
+          error: 'Failed to update order',
+          details: error.message
         });
       }
     }
@@ -193,13 +239,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
     
   } catch (error) {
-    console.error('Orders API error:', error);
-    console.error('Error stack:', error.stack);
-    
+    console.error('API error:', error);
     return res.status(500).json({
       ok: false,
-      error: "Internal server error",
-      message: "サーバー内部エラーが発生しました",
+      error: 'Internal server error',
       details: error.message
     });
   }
