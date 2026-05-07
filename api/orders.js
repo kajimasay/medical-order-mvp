@@ -252,9 +252,10 @@ export default async function handler(req, res) {
     if (req.method === 'PATCH') {
       const orderId = toInt(req.body?.orderId, 0);
       const status = req.body?.status;
+      const createdAt = req.body?.created_at;
 
-      if (!orderId || !status) {
-        return res.status(400).json({ success: false, error: 'orderId and status are required' });
+      if (!orderId || (!status && !createdAt)) {
+        return res.status(400).json({ success: false, error: 'orderId and at least one update field are required' });
       }
 
       try {
@@ -265,7 +266,8 @@ export default async function handler(req, res) {
 
         const updatedOrder = {
           ...existing,
-          status,
+          status: status || existing.status,
+          created_at: createdAt || existing.created_at,
           updated_at: new Date().toISOString(),
         };
 
@@ -274,20 +276,27 @@ export default async function handler(req, res) {
         return res.status(200).json({
           success: true,
           orderId,
-          newStatus: status,
+          newStatus: updatedOrder.status,
           updatedOrder,
-          message: `Order ${orderId} status updated to ${status}`,
+          message: `Order ${orderId} updated`,
           source: 'blob',
         });
       } catch (blobError) {
         console.error('Blob PATCH failed, fallback to sqlite:', blobError.message);
 
         const database = await initDB();
-        const result = await database.run('UPDATE orders SET status = ?, updated_at = ? WHERE id = ?', [
-          status,
-          new Date().toISOString(),
-          orderId,
-        ]);
+        const existingSqlite = await database.get('SELECT * FROM orders WHERE id = ?', [orderId]);
+        if (!existingSqlite) {
+          return res.status(404).json({ success: false, error: `Order ${orderId} not found` });
+        }
+
+        const nextStatus = status || existingSqlite.status;
+        const nextCreatedAt = createdAt || existingSqlite.created_at;
+
+        const result = await database.run(
+          'UPDATE orders SET status = ?, created_at = ?, updated_at = ? WHERE id = ?',
+          [nextStatus, nextCreatedAt, new Date().toISOString(), orderId]
+        );
 
         if (result.changes === 0) {
           return res.status(404).json({ success: false, error: `Order ${orderId} not found` });
@@ -297,9 +306,9 @@ export default async function handler(req, res) {
         return res.status(200).json({
           success: true,
           orderId,
-          newStatus: status,
+          newStatus: updatedOrder.status,
           updatedOrder,
-          message: `Order ${orderId} status updated to ${status}`,
+          message: `Order ${orderId} updated`,
           source: 'sqlite-fallback',
         });
       }
