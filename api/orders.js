@@ -9,39 +9,66 @@ let db = null;
 async function initDB() {
   if (db) return db;
   
-  // Vercel環境では /tmp に保存、ローカルではプロジェクトディレクトリ
-  const dbPath = process.env.VERCEL ? 
-    path.join('/tmp', 'orders.db') : 
-    path.join(process.cwd(), 'orders.db');
+  // Vercelの場合は/tmpにコピー、ローカルではserver/db.sqliteを使用
+  const isVercel = process.env.VERCEL;
   
-  console.log('Database path:', dbPath);
+  let dbPath;
   
-  db = await open({
-    filename: dbPath,
-    driver: sqlite3.Database
-  });
+  if (isVercel) {
+    // Vercel環境では /tmp に保存
+    dbPath = path.join('/tmp', 'orders.db');
+    console.log('Using Vercel temp database:', dbPath);
+  } else {
+    // ローカル環境：server/db.sqliteを探す
+    const possiblePaths = [
+      path.join(process.cwd(), 'server', 'db.sqlite'),
+      path.join(process.cwd(), 'db.sqlite'),
+      path.join(process.cwd(), '..', '..', 'server', 'db.sqlite')
+    ];
+    
+    dbPath = possiblePaths[0]; // デフォルトは server/db.sqlite
+    console.log('Using local database:', dbPath);
+  }
   
-  // テーブルを作成
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      product TEXT NOT NULL,
-      quantity INTEGER NOT NULL,
-      full_name TEXT NOT NULL,
-      company_name TEXT,
-      company_phone TEXT,
-      company_address TEXT,
-      home_address TEXT,
-      home_phone TEXT,
-      contact_name TEXT NOT NULL,
-      contact_phone TEXT NOT NULL,
-      contact_email TEXT NOT NULL,
-      license_file TEXT,
-      status TEXT DEFAULT 'pending',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
+  try {
+    db = await open({
+      filename: dbPath,
+      driver: sqlite3.Database
+    });
+    
+    console.log('Database connected successfully:', dbPath);
+  } catch (error) {
+    console.error('Failed to connect to database:', error);
+    console.error('Attempted path:', dbPath);
+    throw error;
+  }
+  
+  // テーブルを作成（存在しない場合）
+  try {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        full_name TEXT NOT NULL,
+        company_name TEXT,
+        company_phone TEXT,
+        company_address TEXT,
+        home_address TEXT,
+        home_phone TEXT,
+        contact_name TEXT NOT NULL,
+        contact_phone TEXT NOT NULL,
+        contact_email TEXT NOT NULL,
+        license_path TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        updated_at TEXT
+      )
+    `);
+    console.log('Orders table verified/created');
+  } catch (error) {
+    console.error('Error creating table:', error);
+  }
   
   return db;
 }
@@ -93,7 +120,7 @@ export default async function handler(req, res) {
     // ======== POST: 新規注文を作成 ========
     if (req.method === 'POST') {
       console.log('=== POST ORDER ===');
-      console.log('Body:', req.body);
+      console.log('Body:', JSON.stringify(req.body, null, 2));
       
       try {
         const {
@@ -108,11 +135,13 @@ export default async function handler(req, res) {
           contact_name,
           contact_phone,
           contact_email,
-          license_file
+          license_file,
+          license_path
         } = req.body;
 
         // バリデーション
         if (!product || !quantity || !full_name || !contact_name || !contact_phone || !contact_email) {
+          console.error('Missing required fields:', { product, quantity, full_name, contact_name, contact_phone, contact_email });
           return res.status(400).json({
             success: false,
             error: 'Missing required fields'
@@ -120,13 +149,14 @@ export default async function handler(req, res) {
         }
 
         const now = new Date().toISOString();
+        const licensePath = license_path || license_file || null;
         
         const result = await database.run(
           `INSERT INTO orders 
            (product, quantity, full_name, company_name, company_phone, company_address, 
             home_address, home_phone, contact_name, contact_phone, contact_email, 
-            license_file, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+            license_path, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             product,
             parseInt(quantity),
@@ -139,7 +169,7 @@ export default async function handler(req, res) {
             contact_name,
             contact_phone,
             contact_email,
-            license_file || null,
+            licensePath,
             now,
             now
           ]
@@ -158,7 +188,7 @@ export default async function handler(req, res) {
           contact_name,
           contact_phone,
           contact_email,
-          license_file,
+          license_path: licensePath,
           status: 'pending',
           created_at: now,
           updated_at: now
